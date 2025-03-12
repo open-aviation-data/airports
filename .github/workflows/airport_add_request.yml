@@ -2,11 +2,11 @@ name: Process New Airport Requests
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 jobs:
   validate-and-create-pr:
-    if: contains(github.event.issue.labels.*.name, 'new airport') # Only trigger for "new airport" issues
+    if: contains(github.event.issue.labels.*.name, 'add airport') # Only trigger for "add airport" issues
     runs-on: ubuntu-latest
 
     steps:
@@ -74,37 +74,37 @@ jobs:
 
       - name: Append data to CSV
         run: |
-          echo "${{ env.NEW_NUMERIC_ID }},$(jq -r '.fields | [.["ICAO Code"], .["IATA Code"], .["Airport Name"], .["Latitude"], .["Longitude"], .["Country"], .["Timezone"], .["Airport Type"] | @csv' <<< ${{ steps.extract_data.outputs.fields }}})" >> data/airports.csv
+          # Append new row to the CSV file.
+          echo "${{ env.NEW_NUMERIC_ID }},$(jq -r '.fields | [.["ICAO Code"], .["IATA Code"], .["Airport Name"], .["Latitude"], .["Longitude"], .["Country"], .["Timezone"], .["Airport Type"]] | @csv' <<< ${{ steps.extract_data.outputs }})" >> data/airports.csv
 
-      - name: Create new branch
+      - name: Create new branch and push CSV changes
         run: |
           BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
           git checkout -b $BRANCH_NAME
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/airports.csv
-          git commit -m "Added new airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }} (IATA: ${{ steps.extract_data.outputs.fields['IATA Code'] }})"
+          git commit -m "Added new airport: $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }}) (IATA: $(jq -r '.fields["IATA Code"]' <<< ${{ steps.extract_data.outputs }}))"
           git push origin $BRANCH_NAME
 
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          title: "🛫 Add new airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }}"
+          title: "🛫 Add new airport: $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }})"
           body: |
             This PR was **automatically generated** from an airport request issue.
             
             ### ✈️ New Airport Details:
-            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
-            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
-            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
-            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
-            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
-            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            - **Name:** $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }})
+            - **ICAO:** $(jq -r '.fields["ICAO Code"]' <<< ${{ steps.extract_data.outputs }})
+            - **IATA:** $(jq -r '.fields["IATA Code"]' <<< ${{ steps.extract_data.outputs }})
+            - **Country:** $(jq -r '.fields["Country"]' <<< ${{ steps.extract_data.outputs }})
+            - **Timezone:** $(jq -r '.fields["Timezone"]' <<< ${{ steps.extract_data.outputs }})
+            - **Type:** $(jq -r '.fields["Airport Type"]' <<< ${{ steps.extract_data.outputs }})
             
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this submission before merging.
-
           branch: "${{ steps.extract_data.outputs.branch_name }}"
           base: main
           labels: "awaiting review"
@@ -120,10 +120,8 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: `✅ **This request has been processed automatically.**  
-            
-              📄 A **Pull Request** has been created: [View PR](${prUrl})  
-            
-              🏷️ Label: \`awaiting review\`  
-              🚀 Maintainers will review this addition shortly.`
+              body: `✅ **This request has been processed automatically.**
+            📄 A **Pull Request** has been created: [View PR](${prUrl})
+            🏷️ Label: \`awaiting review\`
+            🚀 Maintainers will review this addition shortly.`
             });
