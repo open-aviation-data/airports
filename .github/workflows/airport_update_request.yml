@@ -226,6 +226,9 @@ jobs:
           # Authenticate with GitHub
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           
+          # Fetch the latest changes
+          git fetch
+          
           # Push the new branch
           git push --set-upstream origin "$BRANCH_NAME"
 
@@ -263,9 +266,6 @@ jobs:
 
             # Debugging: Print branch name
             echo "Pushing to branch: $BRANCH_NAME"
-
-            # Pull latest remote changes and rebase local commits
-            git pull --rebase origin "$BRANCH_NAME"
 
             # Force push (with lease) to update the remote branch if necessary
             git push --force-with-lease origin "$BRANCH_NAME"
