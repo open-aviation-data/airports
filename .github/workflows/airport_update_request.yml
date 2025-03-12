@@ -262,6 +262,14 @@ jobs:
       - name: Debug Before PR Creation
         run: echo "Preparing to create pull request"
 
+      - name: Debug PR Step
+        run: |
+          echo "Branch Name: ${{ env.UNIQUE_BRANCH }}"
+          echo "Checking if PR exists..."
+          gh pr list --state open --json title,headRefName
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v7
@@ -269,7 +277,7 @@ jobs:
           token: ${{ secrets.PAT }}
           commit-message: '[create-pull-request] automated change'
           base: 'main'
-          branch: "${{ env.UNIQUE_BRANCH }}"  # Use stored branch
+          branch: "${{ env.UNIQUE_BRANCH }}"   # ✅ Use env variable
           delete-branch: true
           title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
           body: |
