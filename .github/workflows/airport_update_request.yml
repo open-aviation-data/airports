@@ -101,67 +101,113 @@ jobs:
         id: merge_data
         run: |
           if [ "$ID_FOUND" = "true" ]; then
+            # Extract Numeric ID from JSON.
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
+
+            # Get the existing CSV row.
             EXISTING_ROW=$(echo "${EXISTING_ROW}")
-            
-            # Split the CSV row into an array, 20 columns in total
+
+            # Split the CSV row into an array (assuming 20 columns).
             OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
 
-            # Parse JSON for convenience
+            # Save the JSON fields into a variable.
             NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
 
-            function get_field() {
-              # Return the field if present, or empty string if not
+            # Helper function to get a field value from the JSON.
+            get_field() {
               echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // empty')
             }
 
-            # Column 0 = id (the "Numeric ID" field)
+            # For each field, use the new value if available; otherwise, use the old value.
+            # Column 0: id (from Numeric ID)
             UPDATED_ROW="$NUMERIC_ID"
-            # Column 1 = ident (not updated in issue, so preserve OLD_DATA[1])
-            UPDATED_ROW+=",\"${OLD_DATA[1]}\""
-            # Column 2 = icao -> read from "ICAO Code"
-            UPDATED_ROW+=",\"$(get_field 'ICAO Code' || echo "${OLD_DATA[2]}")\""
-            # Column 3 = iata -> read from "IATA Code"
-            UPDATED_ROW+=",\"$(get_field 'IATA Code' || echo "${OLD_DATA[3]}")\""
-            # Column 4 = gps_code (not updated in issue, so preserve OLD_DATA[4])
-            UPDATED_ROW+=",\"${OLD_DATA[4]}\""
-            # Column 5 = local_code (not updated in issue, so preserve OLD_DATA[5])
-            UPDATED_ROW+=",\"${OLD_DATA[5]}\""
-            # Column 6 = name -> read from "Airport Name"
-            UPDATED_ROW+=",\"$(get_field 'Airport Name' || echo "${OLD_DATA[6]}")\""
-            # Column 7 = latitude -> read from "Latitude"
-            UPDATED_ROW+=",\"$(get_field 'Latitude' || echo "${OLD_DATA[7]}")\""
-            # Column 8 = longitude -> read from "Longitude"
-            UPDATED_ROW+=",\"$(get_field 'Longitude' || echo "${OLD_DATA[8]}")\""
-            # Column 9 = elevation (not updated in issue, so preserve OLD_DATA[9])
-            UPDATED_ROW+=",\"${OLD_DATA[9]}\""
-            # Column 10 = continent (not updated in issue, so preserve OLD_DATA[10])
-            UPDATED_ROW+=",\"${OLD_DATA[10]}\""
-            # Column 11 = country -> read from "Country"
-            UPDATED_ROW+=",\"$(get_field 'Country' || echo "${OLD_DATA[11]}")\""
-            # Column 12 = region (not updated in issue, so preserve OLD_DATA[12])
-            UPDATED_ROW+=",\"${OLD_DATA[12]}\""
-            # Column 13 = municipality -> read from "Municipality"
-            UPDATED_ROW+=",\"$(get_field 'Municipality' || echo "${OLD_DATA[13]}")\""
-            # Column 14 = scheduled_service (not updated in issue, so preserve OLD_DATA[14])
-            UPDATED_ROW+=",\"${OLD_DATA[14]}\""
-            # Column 15 = web_url -> read from "New Official Website URL (if applicable)"
-            UPDATED_ROW+=",\"$(get_field 'New Official Website URL (if applicable)' || echo "${OLD_DATA[15]}")\""
-            # Column 16 = wikipedia_url -> read from "New Wikipedia URL (if applicable)"
-            UPDATED_ROW+=",\"$(get_field 'New Wikipedia URL (if applicable)' || echo "${OLD_DATA[16]}")\""
-            # Column 17 = keywords -> read from "Keywords"
-            UPDATED_ROW+=",\"$(get_field 'Keywords' || echo "${OLD_DATA[17]}")\""
-            # Column 18 = timezone -> read from "Timezone"
-            UPDATED_ROW+=",\"$(get_field 'Timezone' || echo "${OLD_DATA[18]}")\""
-            # Column 19 = airport_type -> read from "Airport Type (if changing)"
-          
-            # Possibly the user says "None" if no change, or leaves it empty
-            newType=$(get_field 'Airport Type (if changing)')
-            if [ "$newType" = "None" ] || [ "$newType" = "No Change" ] || [ -z "$newType" ]; then
-              newType="${OLD_DATA[19]}"
-            fi
-            UPDATED_ROW+=",\"$newType\""
 
+            # Column 1: ident (preserve old value)
+            updated_ident="${OLD_DATA[1]}"
+            UPDATED_ROW+=",\"${updated_ident}\""
+
+            # Column 2: icao -> from "ICAO Code"
+            new_icao=$(get_field 'ICAO Code')
+            if [ -z "$new_icao" ]; then new_icao="${OLD_DATA[2]}"; fi
+            UPDATED_ROW+=",\"${new_icao}\""
+
+            # Column 3: iata -> from "IATA Code"
+            new_iata=$(get_field 'IATA Code')
+            if [ -z "$new_iata" ]; then new_iata="${OLD_DATA[3]}"; fi
+            UPDATED_ROW+=",\"${new_iata}\""
+
+            # Column 4: gps_code (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[4]}\""
+
+            # Column 5: local_code (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[5]}\""
+
+            # Column 6: name -> from "Airport Name"
+            new_name=$(get_field 'Airport Name')
+            if [ -z "$new_name" ]; then new_name="${OLD_DATA[6]}"; fi
+            UPDATED_ROW+=",\"${new_name}\""
+
+            # Column 7: latitude -> from "Latitude"
+            new_lat=$(get_field 'Latitude')
+            if [ -z "$new_lat" ]; then new_lat="${OLD_DATA[7]}"; fi
+            UPDATED_ROW+=",\"${new_lat}\""
+
+            # Column 8: longitude -> from "Longitude"
+            new_long=$(get_field 'Longitude')
+            if [ -z "$new_long" ]; then new_long="${OLD_DATA[8]}"; fi
+            UPDATED_ROW+=",\"${new_long}\""
+
+            # Column 9: elevation (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[9]}\""
+
+            # Column 10: continent (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[10]}\""
+
+            # Column 11: country -> from "Country"
+            new_country=$(get_field 'Country')
+            if [ -z "$new_country" ]; then new_country="${OLD_DATA[11]}"; fi
+            UPDATED_ROW+=",\"${new_country}\""
+
+            # Column 12: region (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[12]}\""
+
+            # Column 13: municipality -> from "Municipality"
+            new_muni=$(get_field 'Municipality')
+            if [ -z "$new_muni" ]; then new_muni="${OLD_DATA[13]}"; fi
+            UPDATED_ROW+=",\"${new_muni}\""
+
+            # Column 14: scheduled_service (preserve old value)
+            UPDATED_ROW+=",\"${OLD_DATA[14]}\""
+
+            # Column 15: web_url -> from "New Official Website URL (if applicable)"
+            new_web=$(get_field 'New Official Website URL (if applicable)')
+            if [ -z "$new_web" ]; then new_web="${OLD_DATA[15]}"; fi
+            UPDATED_ROW+=",\"${new_web}\""
+
+            # Column 16: wikipedia_url -> from "New Wikipedia URL (if applicable)"
+            new_wiki=$(get_field 'New Wikipedia URL (if applicable)')
+            if [ -z "$new_wiki" ]; then new_wiki="${OLD_DATA[16]}"; fi
+            UPDATED_ROW+=",\"${new_wiki}\""
+
+            # Column 17: keywords -> from "Keywords"
+            new_keywords=$(get_field 'Keywords')
+            if [ -z "$new_keywords" ]; then new_keywords="${OLD_DATA[17]}"; fi
+            UPDATED_ROW+=",\"${new_keywords}\""
+
+            # Column 18: timezone -> from "Timezone"
+            new_tz=$(get_field 'Timezone')
+            if [ -z "$new_tz" ]; then new_tz="${OLD_DATA[18]}"; fi
+            UPDATED_ROW+=",\"${new_tz}\""
+
+            # Column 19: airport_type -> from "Airport Type (if changing)"
+            new_type=$(get_field 'Airport Type (if changing)')
+            # If new_type is "None", "No Change", or empty, use the old value.
+            if [ "$new_type" = "None" ] || [ "$new_type" = "No Change" ] || [ -z "$new_type" ]; then
+              new_type="${OLD_DATA[19]}"
+            fi
+            UPDATED_ROW+=",\"${new_type}\""
+
+            # Debug: Output the merged UPDATED_ROW
             echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
           else
             echo "UPDATED_ROW=" >> $GITHUB_ENV
