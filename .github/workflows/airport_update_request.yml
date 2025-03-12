@@ -237,7 +237,7 @@ jobs:
             awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
               'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
-            git add data/airports.csv
+            git add -A
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
             echo "Pushing to branch: $UNIQUE_BRANCH"
             git push --force-with-lease origin "$UNIQUE_BRANCH"
