@@ -74,3 +74,13 @@ airports, fix errors, or improve the dataset.
 Follow our updates and join the discussion on:
 
 - GitHub Issues & Discussions
+
+## ★ GitHub Star History
+
+<a href="https://www.star-history.com/#open-aviation-data/airports&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=open-aviation-data/airports&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=open-aviation-data/airports&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=open-aviation-data/airports&type=Date" />
+ </picture>
+</a>
