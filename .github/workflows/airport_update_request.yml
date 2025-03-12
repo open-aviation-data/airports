@@ -168,19 +168,30 @@ jobs:
           git checkout -b $BRANCH_NAME
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git push --set-upstream origin "$BRANCH_NAME"
 
       - name: Update CSV
         run: |
           # Only update the CSV if the numeric ID exists and no errors were reported.
           if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
+            
+            # Debug
+            echo "Extracted Numeric ID: $NUMERIC_ID"
+          
+            # Ensure NUMERIC_ID is a valid integer
+            if ! [[ "$NUMERIC_ID" =~ ^[0-9]+$ ]]; then
+            echo "Error: Invalid or missing Numeric ID: '$NUMERIC_ID'"
+              exit 1
+            fi
+          
             awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
               'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
 
             git add data/airports.csv
-            git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }}) (Numeric ID: $(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }}))"
-            git push origin $BRANCH_NAME
+            git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
+            git push --set-upstream origin "$BRANCH_NAME"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
