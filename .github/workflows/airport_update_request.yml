@@ -188,40 +188,41 @@ jobs:
           # Only update the CSV if the numeric ID exists and no errors were reported.
           if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-            
-            # Debug
+
+            # Debug: Print extracted numeric ID
             echo "Extracted Numeric ID: $NUMERIC_ID"
-          
+
             # Ensure NUMERIC_ID is a valid integer
             if ! [[ "$NUMERIC_ID" =~ ^[0-9]+$ ]]; then
-            echo "Error: Invalid or missing Numeric ID: '$NUMERIC_ID'"
+              echo "Error: Invalid or missing Numeric ID: '$NUMERIC_ID'"
               exit 1
             fi
-          
+
+            # Update the CSV file using awk
             awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
               'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
 
             git add data/airports.csv
+
+            # Commit the changes
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
+
             # Ensure BRANCH_NAME is correctly set
             BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
             if [ -z "$BRANCH_NAME" ]; then
               echo "Error: BRANCH_NAME is empty!"
               exit 1
             fi
-      
+
             # Debugging: Print branch name
             echo "Pushing to branch: $BRANCH_NAME"
-      
-            # Fetch latest changes from the remote branch
-            git fetch origin "$BRANCH_NAME"
-      
-            # Rebase local changes on top of remote changes to prevent conflicts
-            git rebase origin/"$BRANCH_NAME" || (echo "Rebase failed, resolving conflicts..." && git rebase --abort && git pull --rebase origin "$BRANCH_NAME")
-      
-            # Push changes safely after rebasing
-            git push origin "$BRANCH_NAME"
+
+            # Pull latest remote changes and rebase local commits
+            git pull --rebase origin "$BRANCH_NAME"
+
+            # Force push (with lease) to update the remote branch if necessary
+            git push --force-with-lease origin "$BRANCH_NAME"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
