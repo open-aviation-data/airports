@@ -60,7 +60,7 @@ jobs:
       - name: Check if numeric ID exists in CSV
         id: check_numeric_id
         run: |
-          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}')
+          NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
           if grep -q "^${NUMERIC_ID}," data/airports.csv; then
             echo "ID_FOUND=true" >> $GITHUB_ENV
           else
@@ -72,7 +72,7 @@ jobs:
         id: fetch_existing_data
         run: |
           if [ "$ID_FOUND" = "true" ]; then
-            NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
             EXISTING_ROW=$(grep "^${NUMERIC_ID}," data/airports.csv)
             echo "EXISTING_ROW=${EXISTING_ROW}" >> $GITHUB_ENV
           else
@@ -83,25 +83,66 @@ jobs:
         id: merge_data
         run: |
           if [ "$ID_FOUND" = "true" ]; then
-            NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
+            EXISTING_ROW=$(echo "${EXISTING_ROW}")
+            
+            # Split the CSV row into an array, 20 columns in total
             OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
+
+            # Parse JSON for convenience
             NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
 
             function get_field() {
-              echo $(jq -r --arg key "$1" '.[$key] // empty' <<< "$NEW_DATA_JSON")
+              # Return the field if present, or empty string if not
+              echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // empty')
             }
 
-            # Build the updated CSV row. If a new value isn’t provided, preserve the existing one.
+            # Column 0 = id (the "Numeric ID" field)
             UPDATED_ROW="$NUMERIC_ID"
-            UPDATED_ROW+=",\"$(get_field 'ICAO Code' || echo "${OLD_DATA[1]}")\""
-            UPDATED_ROW+=",\"$(get_field 'IATA Code' || echo "${OLD_DATA[2]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Airport Name' || echo "${OLD_DATA[3]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Latitude' || echo "${OLD_DATA[4]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Longitude' || echo "${OLD_DATA[5]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Country' || echo "${OLD_DATA[6]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Timezone' || echo "${OLD_DATA[7]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Airport Type' || echo "${OLD_DATA[8]}")\""
-            UPDATED_ROW+=",\"$(get_field 'Keywords' || echo "${OLD_DATA[9]}")\""
+            # Column 1 = ident (not updated in issue, so preserve OLD_DATA[1])
+            UPDATED_ROW+=",\"${OLD_DATA[1]}\""
+            # Column 2 = icao -> read from "ICAO Code"
+            UPDATED_ROW+=",\"$(get_field 'ICAO Code' || echo "${OLD_DATA[2]}")\""
+            # Column 3 = iata -> read from "IATA Code"
+            UPDATED_ROW+=",\"$(get_field 'IATA Code' || echo "${OLD_DATA[3]}")\""
+            # Column 4 = gps_code (not updated in issue, so preserve OLD_DATA[4])
+            UPDATED_ROW+=",\"${OLD_DATA[4]}\""
+            # Column 5 = local_code (not updated in issue, so preserve OLD_DATA[5])
+            UPDATED_ROW+=",\"${OLD_DATA[5]}\""
+            # Column 6 = name -> read from "Airport Name"
+            UPDATED_ROW+=",\"$(get_field 'Airport Name' || echo "${OLD_DATA[6]}")\""
+            # Column 7 = latitude -> read from "Latitude"
+            UPDATED_ROW+=",\"$(get_field 'Latitude' || echo "${OLD_DATA[7]}")\""
+            # Column 8 = longitude -> read from "Longitude"
+            UPDATED_ROW+=",\"$(get_field 'Longitude' || echo "${OLD_DATA[8]}")\""
+            # Column 9 = elevation (not updated in issue, so preserve OLD_DATA[9])
+            UPDATED_ROW+=",\"${OLD_DATA[9]}\""
+            # Column 10 = continent (not updated in issue, so preserve OLD_DATA[10])
+            UPDATED_ROW+=",\"${OLD_DATA[10]}\""
+            # Column 11 = country -> read from "Country"
+            UPDATED_ROW+=",\"$(get_field 'Country' || echo "${OLD_DATA[11]}")\""
+            # Column 12 = region (not updated in issue, so preserve OLD_DATA[12])
+            UPDATED_ROW+=",\"${OLD_DATA[12]}\""
+            # Column 13 = municipality -> read from "Municipality"
+            UPDATED_ROW+=",\"$(get_field 'Municipality' || echo "${OLD_DATA[13]}")\""
+            # Column 14 = scheduled_service (not updated in issue, so preserve OLD_DATA[14])
+            UPDATED_ROW+=",\"${OLD_DATA[14]}\""
+            # Column 15 = web_url -> read from "New Official Website URL (if applicable)"
+            UPDATED_ROW+=",\"$(get_field 'New Official Website URL (if applicable)' || echo "${OLD_DATA[15]}")\""
+            # Column 16 = wikipedia_url -> read from "New Wikipedia URL (if applicable)"
+            UPDATED_ROW+=",\"$(get_field 'New Wikipedia URL (if applicable)' || echo "${OLD_DATA[16]}")\""
+            # Column 17 = keywords -> read from "Keywords"
+            UPDATED_ROW+=",\"$(get_field 'Keywords' || echo "${OLD_DATA[17]}")\""
+            # Column 18 = timezone -> read from "Timezone"
+            UPDATED_ROW+=",\"$(get_field 'Timezone' || echo "${OLD_DATA[18]}")\""
+            # Column 19 = airport_type -> read from "Airport Type (if changing)"
+          
+            # Possibly the user says "None" if no change, or leaves it empty
+            newType=$(get_field 'Airport Type (if changing)')
+            if [ "$newType" = "None" ] || [ "$newType" = "No Change" ] || [ -z "$newType" ]; then
+              newType="${OLD_DATA[19]}"
+            fi
+            UPDATED_ROW+=",\"$newType\""
 
             echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
           else
@@ -131,23 +172,41 @@ jobs:
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
 
+      - name: Convert JSON to env variables
+        id: convert_json
+        run: |
+          echo "NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')" >> $GITHUB_ENV
+          echo "AIRPORT_NAME=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Airport Name"')" >> $GITHUB_ENV
+          echo "IATA_CODE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."IATA Code"')" >> $GITHUB_ENV
+          echo "ICAO_CODE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."ICAO Code"')" >> $GITHUB_ENV
+          echo "MUNICIPALITY=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Municipality"' )" >> $GITHUB_ENV
+          echo "AIRPORT_TYPE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Airport Type (if changing)"' )" >> $GITHUB_ENV
+          echo "LATITUDE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Latitude"')" >> $GITHUB_ENV
+          echo "LONGITUDE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Longitude"')" >> $GITHUB_ENV
+          echo "WEBSITE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."New Official Website URL (if applicable)"')" >> $GITHUB_ENV
+          echo "WIKIPEDIA=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."New Wikipedia URL (if applicable)"')" >> $GITHUB_ENV
+          echo "KEYWORDS=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Keywords"' )" >> $GITHUB_ENV
+
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          title: "🛫 Update airport: ${{ fromJson(steps.extract_data.outputs.fields['Airport Name']) }}"
+          title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
           body: |
             This PR was **automatically generated** from an airport update request issue.
-            
+
             ### ✈️ Updated Airport Details:
-            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
-            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
-            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
-            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
-            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
-            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
-            - **Keywords:** ${{ steps.extract_data.outputs.fields['Keywords'] }}
-            
+            - **Name:** ${{ env.AIRPORT_NAME }}
+            - **IATA:** ${{ env.IATA_CODE }}
+            - **ICAO:** ${{ env.ICAO_CODE }}
+            - **Municipality:** ${{ env.MUNICIPALITY }}
+            - **Airport Type:** ${{ env.AIRPORT_TYPE }}
+            - **Latitude:** ${{ env.LATITUDE }}
+            - **Longitude:** ${{ env.LONGITUDE }}
+            - **Website:** ${{ env.WEBSITE }}
+            - **Wikipedia:** ${{ env.WIKIPEDIA }}
+            - **Keywords:** ${{ env.KEYWORDS }}
+
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
           branch: "${{ steps.extract_data.outputs.branch_name }}"
@@ -178,20 +237,26 @@ jobs:
               "Latitude", 
               "Longitude", 
               "Country", 
+              "Municipality",
+              "Website",
+              "Wikipedia",
+              "Keywords",
               "Timezone", 
-              "Airport Type", 
-              "Keywords"
+              "Airport Type" 
             ];
             const fieldIndices = {
-              "ICAO Code": 1,
-              "IATA Code": 2,
-              "Airport Name": 3,
-              "Latitude": 4,
-              "Longitude": 5,
-              "Country": 6,
-              "Timezone": 7,
-              "Airport Type": 8,
-              "Keywords": 9
+              "ICAO Code": 2,
+              "IATA Code": 3,
+              "Airport Name": 6,
+              "Latitude": 7,
+              "Longitude": 8,
+              "Country": 11,
+              "Municipality": 13,
+              "Website": 15,
+              "Wikipedia": 16,
+              "Keywords": 17,
+              "Timezone": 18,
+              "Airport Type": 19
             };
 
             let table = "| Field | Before | After |\n";
