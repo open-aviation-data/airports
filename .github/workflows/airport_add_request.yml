@@ -1,0 +1,129 @@
+name: Process New Airport Requests
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  validate-and-create-pr:
+    if: contains(github.event.issue.labels.*.name, 'new airport') # Only trigger for "new airport" issues
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract issue data
+        id: extract_data
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const fields = {};
+
+            // Extract fields from the issue body
+            const bodyLines = issue.body.split('\n');
+            for (const line of bodyLines) {
+              const match = line.match(/^### (.+):\s*(.*)$/);
+              if (match) {
+                fields[match[1].trim()] = match[2].trim();
+              }
+            }
+
+            // Validate required fields
+            const requiredFields = ['Airport Name'];
+            for (const field of requiredFields) {
+              if (!fields[field] || fields[field] === 'N/A') {
+                core.setFailed(`Missing required field: ${field}`);
+              }
+            }
+
+            // Validate and sanitize IATA Code
+            function sanitizeIATA(input) {
+              return input
+                .toUpperCase() // IATA codes are always uppercase
+                .replace(/[^A-Z0-9]/g, '') // Remove non-alphanumeric characters
+                .slice(0, 3); // Ensure max length is 3
+            }
+            fields['IATA Code'] = fields['IATA Code'] ? sanitizeIATA(fields['IATA Code']) : '';
+
+            // Sanitize airport name for branch name
+            function sanitize(input) {
+              return input
+                .normalize('NFD')  // Decomposes accents (e.g., é → e)
+                .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+                .replace(/[^a-zA-Z0-9]/g, '-') // Replace non-alphanumeric with hyphens
+                .toLowerCase()
+                .slice(0, 30); // Limit length for safety
+            }
+
+            // Determine branch name
+            const iata = fields['IATA Code'] ? sanitize(fields['IATA Code']) : null;
+            const airportName = sanitize(fields['Airport Name']);
+            const branchName = iata ? `add-airport-${iata}` : `add-airport-${airportName}`;
+
+            core.setOutput('fields', JSON.stringify(fields));
+            core.setOutput('branch_name', branchName);
+
+      - name: Get last numeric ID from CSV
+        id: get_numeric_id
+        run: |
+          LAST_ID=$(tail -n 1 data/airports.csv | cut -d',' -f1)
+          NEW_ID=$((LAST_ID + 1))
+          echo "NEW_NUMERIC_ID=$NEW_ID" >> $GITHUB_ENV
+
+      - name: Append data to CSV
+        run: |
+          echo "${{ env.NEW_NUMERIC_ID }},$(jq -r '.fields | [.["ICAO Code"], .["IATA Code"], .["Airport Name"], .["Latitude"], .["Longitude"], .["Country"], .["Timezone"], .["Airport Type"] | @csv' <<< ${{ steps.extract_data.outputs.fields }}})" >> data/airports.csv
+
+      - name: Create new branch
+        run: |
+          BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
+          git checkout -b $BRANCH_NAME
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/airports.csv
+          git commit -m "Added new airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }} (IATA: ${{ steps.extract_data.outputs.fields['IATA Code'] }})"
+          git push origin $BRANCH_NAME
+
+      - name: Create Pull Request
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          title: "🛫 Add new airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }}"
+          body: |
+            This PR was **automatically generated** from an airport request issue.
+            
+            ### ✈️ New Airport Details:
+            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
+            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
+            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
+            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
+            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
+            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            
+            🏷️ Label: `awaiting review`  
+            🔎 **Maintainers:** Please validate this submission before merging.
+
+          branch: "${{ steps.extract_data.outputs.branch_name }}"
+          base: main
+          labels: "awaiting review"
+
+      - name: Comment on Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const prUrl = context.payload.pull_request.html_url;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `✅ **This request has been processed automatically.**  
+            
+              📄 A **Pull Request** has been created: [View PR](${prUrl})  
+            
+              🏷️ Label: \`awaiting review\`  
+              🚀 Maintainers will review this addition shortly.`
+            });
