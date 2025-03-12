@@ -204,7 +204,24 @@ jobs:
 
             git add data/airports.csv
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
-            git push
+            # Ensure BRANCH_NAME is correctly set
+            BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
+            if [ -z "$BRANCH_NAME" ]; then
+              echo "Error: BRANCH_NAME is empty!"
+              exit 1
+            fi
+      
+            # Debugging: Print branch name
+            echo "Pushing to branch: $BRANCH_NAME"
+      
+            # Fetch latest changes from the remote branch
+            git fetch origin "$BRANCH_NAME"
+      
+            # Rebase local changes on top of remote changes to prevent conflicts
+            git rebase origin/"$BRANCH_NAME" || (echo "Rebase failed, resolving conflicts..." && git rebase --abort && git pull --rebase origin "$BRANCH_NAME")
+      
+            # Push changes safely after rebasing
+            git push origin "$BRANCH_NAME"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
