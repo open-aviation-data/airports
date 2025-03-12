@@ -4,6 +4,11 @@ on:
   issues:
     types: [opened]
 
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   validate-and-update-pr:
     if: contains(github.event.issue.labels.*.name, 'update airport')
@@ -168,6 +173,15 @@ jobs:
           git checkout -b $BRANCH_NAME
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global credential.helper store
+          
+          # Checkout the new branch
+          git checkout -b "$BRANCH_NAME"
+          
+          # Authenticate with GitHub
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
+          
+          # Push the new branch
           git push --set-upstream origin "$BRANCH_NAME"
 
       - name: Update CSV
