@@ -53,8 +53,21 @@ jobs:
             // Convert Numeric ID to integer
             fields['Numeric ID'] = fields['Numeric ID'] ? parseInt(fields['Numeric ID'], 10) : 0;
               
-            core.setOutput('fields', JSON.stringify(fields));
-            core.setOutput('branch_name', `update-airport-${fields['Numeric ID']}-${fields['Airport Name'] || 'unknown'}`);
+            core.setOutput('fields', JSON.stringify(fields));            
+            function sanitizeBranchName(input) {
+              return input
+                .normalize('NFD') // Remove diacritics (e.g., é → e)
+                .replace(/[\u0300-\u036f]/g, '') // Strip special marks
+                .replace(/[^a-zA-Z0-9\s-]/g, '') // Keep letters, numbers, spaces, and hyphens
+                .replace(/\s+/g, '-') // Replace spaces with hyphens
+                .replace(/-+/g, '-') // Remove duplicate hyphens
+                .toLowerCase()
+                .slice(0, 40); // Limit to 40 characters for safety
+            }
+            
+            const sanitizedAirportName = sanitizeBranchName(fields['Airport Name'] || 'unknown');
+            const branchName = `update-airport-${fields['Numeric ID']}-${sanitizedAirportName}`;
+            core.setOutput('branch_name', branchName);
             core.exportVariable('ERRORS', errors.join("; "));
 
       - name: Check if numeric ID exists in CSV
