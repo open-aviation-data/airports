@@ -26,29 +26,31 @@ jobs:
             for (const line of bodyLines) {
               const match = line.match(/^### (.+):\s*(.*)$/);
               if (match) {
-                fields[match[1].trim()] = match[2].trim();
+                const key = match[1].trim();
+                const value = match[2].trim();
+                if (value !== '' && value !== 'No response') {
+                  fields[key] = value;
+                }
               }
             }
 
             // Validate required fields
-            const requiredFields = ['Numeric ID', 'Airport Name'];
-            for (const field of requiredFields) {
-              if (!fields[field] || fields[field] === 'N/A') {
-                core.setFailed(`Missing required field: ${field}`);
-              }
+            if (!fields['Numeric ID'] || !fields['Airport Name']) {
+              core.setFailed('Missing required field: Numeric ID or Airport Name');
             }
 
-            // Convert numeric ID to integer
+            // Convert Numeric ID to integer
             fields['Numeric ID'] = parseInt(fields['Numeric ID'], 10);
 
             // Sanitize airport name for branch name
             function sanitize(input) {
               return input
-                .normalize('NFD')  // Decomposes accents (e.g., é → e)
-                .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-                .replace(/[^a-zA-Z0-9]/g, '-') // Replace non-alphanumeric with hyphens
-                .toLowerCase()
-                .slice(0, 30); // Limit length for safety
+                ? input.normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+                    .replace(/[^a-zA-Z0-9]/g, '-') // Replace non-alphanumeric with hyphens
+                    .toLowerCase()
+                    .slice(0, 30) // Limit length
+                : 'unknown';
             }
 
             const branchName = `update-airport-${fields['Numeric ID']}-${sanitize(fields['Airport Name'])}`;
@@ -59,12 +61,46 @@ jobs:
       - name: Check if numeric ID exists in CSV
         id: check_numeric_id
         run: |
-          NUMERIC_ID=${{ steps.extract_data.outputs.fields['Numeric ID'] }}
+          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
           if grep -q "^${NUMERIC_ID}," data/airports.csv; then
             echo "ID_FOUND=true" >> $GITHUB_ENV
           else
             echo "ID_FOUND=false" >> $GITHUB_ENV
           fi
+
+      - name: Fetch existing airport row
+        if: env.ID_FOUND == 'true'
+        id: fetch_existing_data
+        run: |
+          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+          EXISTING_ROW=$(grep "^${NUMERIC_ID}," data/airports.csv)
+          echo "EXISTING_ROW=${EXISTING_ROW}" >> $GITHUB_ENV
+
+      - name: Merge existing and new data
+        if: env.ID_FOUND == 'true'
+        id: merge_data
+        run: |
+          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+          OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
+          NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
+
+          function get_field() {
+            echo $(jq -r --arg key "$1" '.[$key] // empty' <<< "$NEW_DATA_JSON")
+          }
+
+          # Preserve existing values if no update is provided
+          UPDATED_ROW="$NUMERIC_ID"
+          UPDATED_ROW+=",\"$(get_field 'ICAO Code' || echo "${OLD_DATA[1]}")\""
+          UPDATED_ROW+=",\"$(get_field 'IATA Code' || echo "${OLD_DATA[2]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Airport Name' || echo "${OLD_DATA[3]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Latitude' || echo "${OLD_DATA[4]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Longitude' || echo "${OLD_DATA[5]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Country' || echo "${OLD_DATA[6]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Timezone' || echo "${OLD_DATA[7]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Airport Type' || echo "${OLD_DATA[8]}")\""
+          UPDATED_ROW+=",\"$(get_field 'Keywords' || echo "${OLD_DATA[9]}")\""
+
+          echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
 
       - name: Create new branch
         run: |
@@ -73,71 +109,109 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Handle valid airport updates
+      - name: Update CSV
         if: env.ID_FOUND == 'true'
         run: |
-          NUMERIC_ID=${{ steps.extract_data.outputs.fields['Numeric ID'] }}
-          jq -r --argjson fields '${{ steps.extract_data.outputs.fields }}' \
-            'map(if .[0] == ($fields."Numeric ID" | tostring) then
-                [$fields."Numeric ID", $fields."ICAO Code", $fields."IATA Code", $fields."Airport Name", $fields."Latitude", $fields."Longitude", $fields."Country", $fields."Timezone", $fields."Airport Type"]
-              else . end) | @csv' data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
+          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+          awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
+            'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
+            data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
 
           git add data/airports.csv
-          git commit -m "Updated airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }} (Numeric ID: ${{ steps.extract_data.outputs.fields['Numeric ID'] }})"
+          git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }}) (Numeric ID: $(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }}))"
           git push origin $BRANCH_NAME
-
-      - name: Handle invalid update request
-        if: env.ID_FOUND == 'false'
-        run: |
-          echo "Invalid numeric ID, creating an invalid PR label."
-          echo "LABEL_INVALID=true" >> $GITHUB_ENV
 
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          title: "🛫 Update airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }}"
+          title: "🛫 Update airport: $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }})"
           body: |
             This PR was **automatically generated** from an airport update request issue.
             
             ### ✈️ Updated Airport Details:
-            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
-            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
-            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
-            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
-            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
-            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            - **Name:** $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **ICAO:** $(jq -r '.["ICAO Code"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **IATA:** $(jq -r '.["IATA Code"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **Country:** $(jq -r '.["Country"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **Timezone:** $(jq -r '.["Timezone"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **Type:** $(jq -r '.["Airport Type"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **Keywords:** $(jq -r '.["Keywords"]' <<< ${{ steps.extract_data.outputs.fields }})
             
-            🏷️ Label: `${{ env.LABEL_INVALID == 'true' && 'invalid' || 'awaiting review' }}`  
+            🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
-
           branch: "${{ steps.extract_data.outputs.branch_name }}"
           base: main
-          labels: "${{ env.LABEL_INVALID == 'true' && 'invalid' || 'awaiting review' }}"
+          labels: "awaiting review"
 
       - name: Comment on Issue
         uses: actions/github-script@v6
+        env:
+          EXISTING_ROW: ${{ env.EXISTING_ROW }}
+          NEW_FIELDS: ${{ steps.extract_data.outputs.fields }}
+          PULL_REQUEST_URL: ${{ steps.create_pr.outputs.pull_request_url }}
         with:
           script: |
-            const issueNumber = context.payload.issue.number;
-            const prUrl = context.payload.pull_request.html_url;
-
-            let commentBody = `✅ **This request has been processed automatically.**  
+            // Parse the old CSV row.
+            const oldRow = process.env.EXISTING_ROW || "";
+            // Split CSV using a regex to handle quoted commas.
+            const oldValues = oldRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(val => val.replace(/^"|"$/g, ''));
             
-            📄 A **Pull Request** has been created: [View PR](${prUrl})`;
+            // Parse the new fields from the issue.
+            const newFields = JSON.parse(process.env.NEW_FIELDS);
+            
+            // Define the fields to show.
+            const fields = [
+              "ICAO Code", 
+              "IATA Code", 
+              "Airport Name", 
+              "Latitude", 
+              "Longitude", 
+              "Country", 
+              "Timezone", 
+              "Airport Type", 
+              "Keywords"
+            ];
+            // Map each field to its position in the CSV row (Numeric ID is at index 0).
+            const fieldIndices = {
+              "ICAO Code": 1,
+              "IATA Code": 2,
+              "Airport Name": 3,
+              "Latitude": 4,
+              "Longitude": 5,
+              "Country": 6,
+              "Timezone": 7,
+              "Airport Type": 8,
+              "Keywords": 9
+            };
 
-            if (process.env.LABEL_INVALID == 'true') {
-              commentBody += `❌ The provided Numeric ID does not exist in the dataset.  
-              🏷️ Label: \`invalid\`  
-              ⚠️ **Maintainers:** Please verify this request manually.`;
-            } else {
-              commentBody += `🏷️ Label: \`awaiting review\`  
-              🚀 **Maintainers:** Please review this update before merging.`;
-            }
+            // Build the Markdown table.
+            let table = "| Field | Before | After |\n";
+            table += "| --- | --- | --- |\n";
+            fields.forEach(field => {
+              const idx = fieldIndices[field];
+              const oldVal = (oldValues[idx] || "").trim();
+              // Use the new value if provided, otherwise preserve the old value.
+              const newVal = (newFields[field] || "").trim() || oldVal;
+              const displayOld = oldVal === "" ? "*empty*" : oldVal;
+              const displayNew = newVal === "" ? "*empty*" : newVal;
+              table += `| ${field} | ${displayOld} | ${displayNew} |\n`;
+            });
+
+            // Use the pull request URL from the create PR step.
+            const prUrl = process.env.PULL_REQUEST_URL;
+            const issueNumber = context.payload.issue.number;
+
+            const body = `✅ **This request has been processed automatically.**\n\n` +
+                         `📄 A **Pull Request** has been created: [View PR](${prUrl})\n\n` +
+                         `### Changes Overview\n\n` +
+                         `${table}\n\n` +
+                         `🏷️ Label: \`awaiting review\`\n` +
+                         `🚀 Maintainers will review this update before merging.`;
 
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
-              body: commentBody
+              body: body
             });
