@@ -209,21 +209,20 @@ jobs:
       - name: Set unique branch name
         id: unique_branch
         run: |
-          # Append a timestamp for uniqueness.
           UNIQUE_BRANCH="${{ steps.extract_data.outputs.branch_name }}-$(date +%s)"
-          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_OUTPUT
+          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_ENV
           echo "UNIQUE_BRANCH=$UNIQUE_BRANCH" >> $GITHUB_ENV
+          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Create new branch from main
         run: |
-          echo "Using branch: $UNIQUE_BRANCH"
-          # Always start from main.
+          echo "Using branch: ${{ env.UNIQUE_BRANCH }}"
           git checkout main
-          git checkout -b "$UNIQUE_BRANCH"
+          git checkout -b "${{ env.UNIQUE_BRANCH }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          git push --set-upstream origin "$UNIQUE_BRANCH"
+          git push --set-upstream origin "${{ env.UNIQUE_BRANCH }}"
 
       - name: Update CSV
         run: |
@@ -270,7 +269,7 @@ jobs:
           token: ${{ secrets.PAT }}
           commit-message: '[create-pull-request] automated change'
           base: 'main'
-          branch: "$UNIQUE_BRANCH"
+          branch: "${{ env.UNIQUE_BRANCH }}"  # Use stored branch
           delete-branch: true
           title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
           body: |
