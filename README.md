@@ -22,7 +22,7 @@ fields:
 
 | Column Name         | Description                                         |
 |---------------------|-----------------------------------------------------|
-| `id`                | Unique UUID of the airport                          |
+| `id`                | Unique ID of the airport                            |
 | `ident`             | Unique airport identifier (often ICAO)              |
 | `icao`              | ICAO airport code                                   |
 | `iata`              | IATA airport code                                   |
