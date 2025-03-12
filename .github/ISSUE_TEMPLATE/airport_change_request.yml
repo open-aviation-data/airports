@@ -1,0 +1,110 @@
+name: "Airport Update Request"
+description: "Request a modification to an existing airport entry."
+labels: ["update airport"]
+title: "Update Request: <airport-name>"
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        🛠 **Before opening a request, please check if this change is already reported.**  
+        🔍 Browse [existing update requests](https://github.com/open-aviation-data/airports/issues?q=is%3Aissue+label%3A%22update+airport%22).  
+        If a similar request exists, **comment on it instead of opening a duplicate**.
+
+        📌 **Contributing guidelines** → [CONTRIBUTING.md](https://github.com/open-aviation-data/airports/CONTRIBUTING.md)  
+        
+        **IMPORTANT:** Requests without sufficient justification **may be rejected**. Please include reliable sources (official website, government aviation authority, etc.).
+
+  - type: input
+    attributes:
+      label: Numeric ID
+      description: "Enter the **numeric ID** of the airport."
+      placeholder: "Example: 42"
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Airport Name
+      description: "Enter the **current name** of the airport in the database."
+      placeholder: "Example: Oslo Gardermoen Airport"
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: IATA Code
+      description: "The current or updated IATA code (if applicable)."
+      placeholder: "Example: OSL"
+
+  - type: input
+    attributes:
+      label: ICAO Code
+      description: "The current or updated ICAO code (if applicable)."
+      placeholder: "Example: ENGM"
+
+  - type: input
+    attributes:
+      label: Municipality
+      description: "The current or updated municipality where the airport is located."
+      placeholder: "Example: Ullensaker"
+
+  - type: dropdown
+    attributes:
+      label: Airport Type (if changing)
+      description: "Select a new type if this airport category has changed."
+      options:
+        - No Change
+        - large_airport
+        - medium_airport
+        - small_airport
+        - heliport
+        - seaplane_base
+        - balloonport
+        - closed
+
+  - type: input
+    attributes:
+      label: New Latitude (if applicable)
+      description: "If the airport coordinates have changed, enter the new latitude."
+      placeholder: "Example: 60.193901"
+
+  - type: input
+    attributes:
+      label: New Longitude (if applicable)
+      description: "If the airport coordinates have changed, enter the new longitude."
+      placeholder: "Example: 11.100400"
+
+  - type: input
+    attributes:
+      label: New Official Website URL (if applicable)
+      description: "Provide an updated official website link, if changed."
+      placeholder: "Example: https://www.avinor.no/en/airport/oslo-airport"
+
+  - type: input
+    attributes:
+      label: New Wikipedia URL (if applicable)
+      description: "Provide an updated Wikipedia link, if changed."
+      placeholder: "Example: https://en.wikipedia.org/wiki/Oslo_Airport,_Gardermoen"
+
+  - type: textarea
+    attributes:
+      label: Reason for Change
+      description: |
+        Provide **reasons** and **sources** for this change request.
+        - Why should this change be made?
+        - Is there an official source supporting the change?
+        - Any relevant links (e.g., ICAO, FAA, government notices)?
+      placeholder: |
+        Example:
+        - The ICAO code has been updated per FAA records: [FAA Airport Directory](https://www.faa.gov/airports/)
+        - The airport name has changed officially in 2025
+        - The previous coordinates were incorrect, verified via satellite images
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ✅ **Thank you for contributing!** We will review your request based on the provided information.  
+        If further verification is needed, we may request additional sources.
