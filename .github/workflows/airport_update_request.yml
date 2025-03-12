@@ -27,16 +27,15 @@ jobs:
             const fields = {};
             let errors = [];
             
-            // Split the issue body into lines and extract fields by header.
+            // Split issue body into lines and extract key/value pairs based on headers.
             const bodyLines = issue.body.split('\n');
             let lastKey = null;
             for (const line of bodyLines) {
-              let match = line.match(/^### (.+)$/);
+              const match = line.match(/^### (.+)$/);
               if (match) {
                 lastKey = match[1].trim();
-                fields[lastKey] = ""; // initialize key
+                fields[lastKey] = "";
               } else if (lastKey) {
-                // Append non-empty lines (ignore "_No response_")
                 const value = line.trim();
                 if (value && value !== "_No response_") {
                   fields[lastKey] += (fields[lastKey] ? " " : "") + value;
@@ -106,7 +105,7 @@ jobs:
             # Get the existing CSV row.
             EXISTING_ROW=$(echo "${EXISTING_ROW}")
           
-            # Split the CSV row into an array (20 columns expected).
+            # Split the CSV row into an array (assume 20 columns).
             OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
           
             # Save the JSON fields.
@@ -210,15 +209,15 @@ jobs:
       - name: Set unique branch name
         id: unique_branch
         run: |
-          # Append a timestamp to the branch name for uniqueness.
+          # Append a timestamp for uniqueness.
           UNIQUE_BRANCH="${{ steps.extract_data.outputs.branch_name }}-$(date +%s)"
           echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_OUTPUT
           echo "UNIQUE_BRANCH=$UNIQUE_BRANCH" >> $GITHUB_ENV
 
       - name: Create new branch from main
         run: |
-          # Use the unique branch name.
           echo "Using branch: $UNIQUE_BRANCH"
+          # Always start from main.
           git checkout main
           git checkout -b "$UNIQUE_BRANCH"
           git config user.name "github-actions[bot]"
