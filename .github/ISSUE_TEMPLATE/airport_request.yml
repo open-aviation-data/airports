@@ -1,0 +1,101 @@
+name: Airport request
+description: "Request a new airport to be added to Open Aviation Data."
+labels: ["new airport"]
+title: 'Request: <airport-name>'
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        🚀 **Before opening a request, please check existing issues**  
+        Please search for [issues labeled `new airport`][new-airport-issues] before submitting a request.  
+        If an airport already has an issue, **comment on it instead of opening a new one**.
+
+        📌 **Contributing guidelines** → [CONTRIBUTING.md](https://github.com/open-aviation-data/airports/CONTRIBUTING.md)  
+        🔍 **Existing airport requests** → [Browse issues](https://github.com/open-aviation-data/airports/issues?q=is%3Aissue+label%3A%22new+airport%22)
+
+  - type: input
+    attributes:
+      label: Airport Name
+      placeholder: "Example: Oslo Gardermoen Airport"
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: IATA Code
+      description: "The 3-letter IATA code for the airport."
+      placeholder: "Example: OSL"
+
+  - type: input
+    attributes:
+      label: ICAO Code
+      description: "The 4-letter ICAO code for the airport."
+      placeholder: "Example: ENGM"
+
+  - type: input
+    attributes:
+      label: Country
+      description: "The country where the airport is located (Full name or ISO2/ISO3)."
+      placeholder: "Example: Norway / NO / NOR"
+
+  - type: input
+    attributes:
+      label: Municipality
+      description: "The municipality or city where the airport is located."
+      placeholder: "Example: Ullensaker"
+
+  - type: input
+    attributes:
+      label: Latitude
+      description: "The latitude of the airport (decimal format)."
+      placeholder: "Example: 60.193901"
+
+  - type: input
+    attributes:
+      label: Longitude
+      description: "The longitude of the airport (decimal format)."
+      placeholder: "Example: 11.100400"
+
+  - type: dropdown
+    attributes:
+      label: Airport Type
+      description: "The category of the airport."
+      options:
+        - large_airport
+        - medium_airport
+        - small_airport
+        - heliport
+        - seaplane_base
+        - balloonport
+        - closed
+
+  - type: input
+    attributes:
+      label: Timezone (IANA)
+      description: "The timezone of the airport in IANA format."
+      placeholder: "Example: Europe/Oslo"
+
+  - type: input
+    attributes:
+      label: Official Website URL
+      description: "The official website of the airport, if available."
+      placeholder: "Example: https://www.avinor.no/en/airport/oslo-airport"
+
+  - type: input
+    attributes:
+      label: Wikipedia URL
+      description: "The Wikipedia page for the airport, if available."
+      placeholder: "Example: https://en.wikipedia.org/wiki/Oslo_Airport,_Gardermoen"
+
+  - type: textarea
+    attributes:
+      label: Keywords
+      description: "Comma-separated keywords related to the airport (e.g., alternative names, nicknames, cities served)."
+      placeholder: "Example: Oslo, Gardermoen, Avinor"
+
+  - type: markdown
+    attributes:
+      value: |
+        ✅ **Thank you for contributing!** We will review your request and update the database accordingly.  
+        If you have additional official sources, feel free to add them in a comment after submitting.
