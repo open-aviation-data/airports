@@ -260,10 +260,17 @@ jobs:
           echo "WIKIPEDIA=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."New Wikipedia URL (if applicable)"')" >> $GITHUB_ENV
           echo "KEYWORDS=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Keywords"' )" >> $GITHUB_ENV
 
+      - name: Debug Before PR Creation
+        run: echo "Preparing to create pull request"
+
       - name: Create Pull Request
         id: create_pr
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ secrets.PAT }}
+          commit-message: '[create-pull-request] automated change'
+          branch: "$UNIQUE_BRANCH"
+          delete-branch: true
           title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
           body: |
             This PR was **automatically generated** from an airport update request issue.
@@ -279,12 +286,12 @@ jobs:
             - **Website:** ${{ env.WEBSITE }}
             - **Wikipedia:** ${{ env.WIKIPEDIA }}
             - **Keywords:** ${{ env.KEYWORDS }}
-
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
-          branch: "$UNIQUE_BRANCH"
-          base: main
           labels: "awaiting review"
+
+      - name: Debug After PR Creation
+        run: echo "PR creation step executed"
 
       - name: Comment on Issue
         uses: actions/github-script@v6
