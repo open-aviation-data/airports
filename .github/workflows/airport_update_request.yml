@@ -269,6 +269,7 @@ jobs:
         with:
           token: ${{ secrets.PAT }}
           commit-message: '[create-pull-request] automated change'
+          base: 'main'
           branch: "$UNIQUE_BRANCH"
           delete-branch: true
           title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
