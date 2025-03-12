@@ -1,0 +1,143 @@
+name: Process Update Airport Requests
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  validate-and-update-pr:
+    if: contains(github.event.issue.labels.*.name, 'update airport') # Only trigger for "update airport" issues
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract issue data
+        id: extract_data
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const fields = {};
+
+            // Extract fields from the issue body
+            const bodyLines = issue.body.split('\n');
+            for (const line of bodyLines) {
+              const match = line.match(/^### (.+):\s*(.*)$/);
+              if (match) {
+                fields[match[1].trim()] = match[2].trim();
+              }
+            }
+
+            // Validate required fields
+            const requiredFields = ['Numeric ID', 'Airport Name'];
+            for (const field of requiredFields) {
+              if (!fields[field] || fields[field] === 'N/A') {
+                core.setFailed(`Missing required field: ${field}`);
+              }
+            }
+
+            // Convert numeric ID to integer
+            fields['Numeric ID'] = parseInt(fields['Numeric ID'], 10);
+
+            // Sanitize airport name for branch name
+            function sanitize(input) {
+              return input
+                .normalize('NFD')  // Decomposes accents (e.g., é → e)
+                .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+                .replace(/[^a-zA-Z0-9]/g, '-') // Replace non-alphanumeric with hyphens
+                .toLowerCase()
+                .slice(0, 30); // Limit length for safety
+            }
+
+            const branchName = `update-airport-${fields['Numeric ID']}-${sanitize(fields['Airport Name'])}`;
+
+            core.setOutput('fields', JSON.stringify(fields));
+            core.setOutput('branch_name', branchName);
+
+      - name: Check if numeric ID exists in CSV
+        id: check_numeric_id
+        run: |
+          NUMERIC_ID=${{ steps.extract_data.outputs.fields['Numeric ID'] }}
+          if grep -q "^${NUMERIC_ID}," data/airports.csv; then
+            echo "ID_FOUND=true" >> $GITHUB_ENV
+          else
+            echo "ID_FOUND=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create new branch
+        run: |
+          BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
+          git checkout -b $BRANCH_NAME
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Handle valid airport updates
+        if: env.ID_FOUND == 'true'
+        run: |
+          NUMERIC_ID=${{ steps.extract_data.outputs.fields['Numeric ID'] }}
+          jq -r --argjson fields '${{ steps.extract_data.outputs.fields }}' \
+            'map(if .[0] == ($fields."Numeric ID" | tostring) then
+                [$fields."Numeric ID", $fields."ICAO Code", $fields."IATA Code", $fields."Airport Name", $fields."Latitude", $fields."Longitude", $fields."Country", $fields."Timezone", $fields."Airport Type"]
+              else . end) | @csv' data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
+
+          git add data/airports.csv
+          git commit -m "Updated airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }} (Numeric ID: ${{ steps.extract_data.outputs.fields['Numeric ID'] }})"
+          git push origin $BRANCH_NAME
+
+      - name: Handle invalid update request
+        if: env.ID_FOUND == 'false'
+        run: |
+          echo "Invalid numeric ID, creating an invalid PR label."
+          echo "LABEL_INVALID=true" >> $GITHUB_ENV
+
+      - name: Create Pull Request
+        id: create_pr
+        uses: peter-evans/create-pull-request@v5
+        with:
+          title: "🛫 Update airport: ${{ steps.extract_data.outputs.fields['Airport Name'] }}"
+          body: |
+            This PR was **automatically generated** from an airport update request issue.
+            
+            ### ✈️ Updated Airport Details:
+            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
+            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
+            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
+            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
+            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
+            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            
+            🏷️ Label: `${{ env.LABEL_INVALID == 'true' && 'invalid' || 'awaiting review' }}`  
+            🔎 **Maintainers:** Please validate this update before merging.
+
+          branch: "${{ steps.extract_data.outputs.branch_name }}"
+          base: main
+          labels: "${{ env.LABEL_INVALID == 'true' && 'invalid' || 'awaiting review' }}"
+
+      - name: Comment on Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const prUrl = context.payload.pull_request.html_url;
+
+            let commentBody = `✅ **This request has been processed automatically.**  
+            
+            📄 A **Pull Request** has been created: [View PR](${prUrl})`;
+
+            if (process.env.LABEL_INVALID == 'true') {
+              commentBody += `❌ The provided Numeric ID does not exist in the dataset.  
+              🏷️ Label: \`invalid\`  
+              ⚠️ **Maintainers:** Please verify this request manually.`;
+            } else {
+              commentBody += `🏷️ Label: \`awaiting review\`  
+              🚀 **Maintainers:** Please review this update before merging.`;
+            }
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: commentBody
+            });
