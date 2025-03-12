@@ -227,7 +227,10 @@ jobs:
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           
           # Fetch the latest changes
-          git fetch
+          git fetch origin "$BRANCH_NAME"
+          
+          # Pull the latest changes
+          git pull origin "$BRANCH_NAME"
           
           # Push the new branch
           git push --set-upstream origin "$BRANCH_NAME"
