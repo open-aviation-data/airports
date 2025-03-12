@@ -8,11 +8,11 @@ body:
     attributes:
       value: |
         🚀 **Before opening a request, please check existing issues**  
-        Please search for [issues labeled `new airport`][new-airport-issues] before submitting a request.  
+        Please search for [issues labeled `add airport`][add-airport-issues] before submitting a request.  
         If an airport already has an issue, **comment on it instead of opening a new one**.
 
         📌 **Contributing guidelines** → [CONTRIBUTING.md](https://github.com/open-aviation-data/airports/CONTRIBUTING.md)  
-        🔍 **Existing airport requests** → [Browse issues](https://github.com/open-aviation-data/airports/issues?q=is%3Aissue+label%3A%22new+airport%22)
+        🔍 **Existing airport requests** → [Browse issues](https://github.com/open-aviation-data/airports/issues?q=is%3Aissue+label%3A%22add+airport%22)
 
   - type: input
     attributes:
