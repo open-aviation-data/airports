@@ -87,6 +87,12 @@ body:
       description: "Provide an updated Wikipedia link, if changed."
       placeholder: "Example: https://en.wikipedia.org/wiki/Oslo_Airport,_Gardermoen"
 
+  - type: input
+    attributes:
+      label: Keywords
+      description: "Enter relevant keywords to help identify this airport."
+      placeholder: "Example: Oslo, Gardermoen, Avinor"
+
   - type: textarea
     attributes:
       label: Reason for Change
