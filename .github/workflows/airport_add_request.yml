@@ -2,7 +2,7 @@ name: Process New Airport Requests
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
 
 jobs:
   validate-and-create-pr:

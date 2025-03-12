@@ -2,7 +2,7 @@ name: Process Update Airport Requests
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
 
 jobs:
   validate-and-update-pr:
@@ -73,17 +73,12 @@ jobs:
       - name: Check if numeric ID exists in CSV
         id: check_numeric_id
         run: |
-          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+          NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}')
           if grep -q "^${NUMERIC_ID}," data/airports.csv; then
             echo "ID_FOUND=true" >> $GITHUB_ENV
           else
             echo "ID_FOUND=false" >> $GITHUB_ENV
-            # Append an error if not already present.
-            if [ -z "$ERRORS" ]; then
-              echo "ERRORS=Numeric ID not found in CSV" >> $GITHUB_ENV
-            else
-              echo "ERRORS=${ERRORS}; Numeric ID not found in CSV" >> $GITHUB_ENV
-            fi
+            echo "ERRORS=${ERRORS}; Numeric ID not found in CSV" >> $GITHUB_ENV
           fi
 
       - name: Fetch existing airport row
