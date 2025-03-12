@@ -91,7 +91,7 @@ jobs:
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          title: "🛫 Add new airport: $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }})"
+          title: "🛫 Add new airport: ${{ fromJson(steps.extract_data.outputs.fields['Airport Name']) }}"
           body: |
             This PR was **automatically generated** from an airport request issue.
             
