@@ -1,7 +1,7 @@
-name: Airport request
+name: Airport Add Request
 description: "Request a new airport to be added to Open Aviation Data."
 labels: [add airport]
-title: 'Request: <airport-name>'
+title: 'Add Request: <airport-name>'
 
 body:
   - type: markdown

@@ -1,6 +1,6 @@
 name: "Airport Update Request"
 description: "Request a modification to an existing airport entry."
-labels: ["update airport"]
+labels: [update airport]
 title: "Update Request: <airport-name>"
 
 body:
