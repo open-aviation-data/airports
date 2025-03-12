@@ -27,47 +27,46 @@ jobs:
             const fields = {};
             let errors = [];
             
+            // Split the issue body into lines and extract fields by header.
             const bodyLines = issue.body.split('\n');
             let lastKey = null;
-            
             for (const line of bodyLines) {
-              // Match header lines (e.g., "### Airport Name")
               let match = line.match(/^### (.+)$/);
-            
               if (match) {
                 lastKey = match[1].trim();
-                fields[lastKey] = ""; // Initialize key
+                fields[lastKey] = ""; // initialize key
               } else if (lastKey) {
-                // Handle multi-line values, but ignore "_No response_"
+                // Append non-empty lines (ignore "_No response_")
                 const value = line.trim();
-            
                 if (value && value !== "_No response_") {
                   fields[lastKey] += (fields[lastKey] ? " " : "") + value;
                 }
               }
             }
             
-            // Check required fields
+            // Validate required fields.
             if (!fields['Numeric ID']) {
               errors.push('Missing required field: Numeric ID');
             }
             if (!fields['Airport Name']) {
               errors.push('Missing required field: Airport Name');
             }
-              
-            // Convert Numeric ID to integer
+            
+            // Convert Numeric ID to integer.
             fields['Numeric ID'] = fields['Numeric ID'] ? parseInt(fields['Numeric ID'], 10) : 0;
-              
-            core.setOutput('fields', JSON.stringify(fields));            
+            
+            core.setOutput('fields', JSON.stringify(fields));
+            
+            // Function to sanitize branch names.
             function sanitizeBranchName(input) {
               return input
-                .normalize('NFD') // Remove diacritics (e.g., é → e)
-                .replace(/[\u0300-\u036f]/g, '') // Strip special marks
-                .replace(/[^a-zA-Z0-9\s-]/g, '') // Keep letters, numbers, spaces, and hyphens
-                .replace(/\s+/g, '-') // Replace spaces with hyphens
-                .replace(/-+/g, '-') // Remove duplicate hyphens
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
                 .toLowerCase()
-                .slice(0, 40); // Limit to 40 characters for safety
+                .slice(0, 40);
             }
             
             const sanitizedAirportName = sanitizeBranchName(fields['Airport Name'] || 'unknown');
@@ -103,191 +102,146 @@ jobs:
           if [ "$ID_FOUND" = "true" ]; then
             # Extract Numeric ID from JSON.
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-
+          
             # Get the existing CSV row.
             EXISTING_ROW=$(echo "${EXISTING_ROW}")
-
-            # Split the CSV row into an array (assuming 20 columns).
+          
+            # Split the CSV row into an array (20 columns expected).
             OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
-
-            # Save the JSON fields into a variable.
+          
+            # Save the JSON fields.
             NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
-
-            # Helper function to get a field value from the JSON.
             get_field() {
               echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // empty')
             }
-
-            # For each field, use the new value if available; otherwise, use the old value.
-            # Column 0: id (from Numeric ID)
-            UPDATED_ROW="$NUMERIC_ID"
-
-            # Column 1: ident (preserve old value)
+          
+            # Build UPDATED_ROW column by column.
+            UPDATED_ROW="$NUMERIC_ID"  # Column 0: id
+          
+            # Column 1: ident (preserve old)
             updated_ident="${OLD_DATA[1]}"
             UPDATED_ROW+=",\"${updated_ident}\""
-
-            # Column 2: icao -> from "ICAO Code"
+          
+            # Column 2: icao -> "ICAO Code"
             new_icao=$(get_field 'ICAO Code')
             if [ -z "$new_icao" ]; then new_icao="${OLD_DATA[2]}"; fi
             UPDATED_ROW+=",\"${new_icao}\""
-
-            # Column 3: iata -> from "IATA Code"
+          
+            # Column 3: iata -> "IATA Code"
             new_iata=$(get_field 'IATA Code')
             if [ -z "$new_iata" ]; then new_iata="${OLD_DATA[3]}"; fi
             UPDATED_ROW+=",\"${new_iata}\""
-
-            # Column 4: gps_code (preserve old value)
+          
+            # Column 4: gps_code (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[4]}\""
-
-            # Column 5: local_code (preserve old value)
+          
+            # Column 5: local_code (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[5]}\""
-
-            # Column 6: name -> from "Airport Name"
+          
+            # Column 6: name -> "Airport Name"
             new_name=$(get_field 'Airport Name')
             if [ -z "$new_name" ]; then new_name="${OLD_DATA[6]}"; fi
             UPDATED_ROW+=",\"${new_name}\""
-
-            # Column 7: latitude -> from "Latitude"
+          
+            # Column 7: latitude -> "Latitude"
             new_lat=$(get_field 'Latitude')
             if [ -z "$new_lat" ]; then new_lat="${OLD_DATA[7]}"; fi
             UPDATED_ROW+=",\"${new_lat}\""
-
-            # Column 8: longitude -> from "Longitude"
+          
+            # Column 8: longitude -> "Longitude"
             new_long=$(get_field 'Longitude')
             if [ -z "$new_long" ]; then new_long="${OLD_DATA[8]}"; fi
             UPDATED_ROW+=",\"${new_long}\""
-
-            # Column 9: elevation (preserve old value)
+          
+            # Column 9: elevation (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[9]}\""
-
-            # Column 10: continent (preserve old value)
+          
+            # Column 10: continent (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[10]}\""
-
-            # Column 11: country -> from "Country"
+          
+            # Column 11: country -> "Country"
             new_country=$(get_field 'Country')
             if [ -z "$new_country" ]; then new_country="${OLD_DATA[11]}"; fi
             UPDATED_ROW+=",\"${new_country}\""
-
-            # Column 12: region (preserve old value)
+          
+            # Column 12: region (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[12]}\""
-
-            # Column 13: municipality -> from "Municipality"
+          
+            # Column 13: municipality -> "Municipality"
             new_muni=$(get_field 'Municipality')
             if [ -z "$new_muni" ]; then new_muni="${OLD_DATA[13]}"; fi
             UPDATED_ROW+=",\"${new_muni}\""
-
-            # Column 14: scheduled_service (preserve old value)
+          
+            # Column 14: scheduled_service (preserve old)
             UPDATED_ROW+=",\"${OLD_DATA[14]}\""
-
-            # Column 15: web_url -> from "New Official Website URL (if applicable)"
+          
+            # Column 15: web_url -> "New Official Website URL (if applicable)"
             new_web=$(get_field 'New Official Website URL (if applicable)')
             if [ -z "$new_web" ]; then new_web="${OLD_DATA[15]}"; fi
             UPDATED_ROW+=",\"${new_web}\""
-
-            # Column 16: wikipedia_url -> from "New Wikipedia URL (if applicable)"
+          
+            # Column 16: wikipedia_url -> "New Wikipedia URL (if applicable)"
             new_wiki=$(get_field 'New Wikipedia URL (if applicable)')
             if [ -z "$new_wiki" ]; then new_wiki="${OLD_DATA[16]}"; fi
             UPDATED_ROW+=",\"${new_wiki}\""
-
-            # Column 17: keywords -> from "Keywords"
+          
+            # Column 17: keywords -> "Keywords"
             new_keywords=$(get_field 'Keywords')
             if [ -z "$new_keywords" ]; then new_keywords="${OLD_DATA[17]}"; fi
             UPDATED_ROW+=",\"${new_keywords}\""
-
-            # Column 18: timezone -> from "Timezone"
+          
+            # Column 18: timezone -> "Timezone"
             new_tz=$(get_field 'Timezone')
             if [ -z "$new_tz" ]; then new_tz="${OLD_DATA[18]}"; fi
             UPDATED_ROW+=",\"${new_tz}\""
-
-            # Column 19: airport_type -> from "Airport Type (if changing)"
+          
+            # Column 19: airport_type -> "Airport Type (if changing)"
             new_type=$(get_field 'Airport Type (if changing)')
-            # If new_type is "None", "No Change", or empty, use the old value.
             if [ "$new_type" = "None" ] || [ "$new_type" = "No Change" ] || [ -z "$new_type" ]; then
               new_type="${OLD_DATA[19]}"
             fi
             UPDATED_ROW+=",\"${new_type}\""
-
-            # Debug: Output the merged UPDATED_ROW
+          
             echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
           else
             echo "UPDATED_ROW=" >> $GITHUB_ENV
           fi
 
-      - name: Create or Checkout Branch
+      - name: Set unique branch name
+        id: unique_branch
         run: |
-          BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
-          echo "Using branch: $BRANCH_NAME"
+          # Append a timestamp to the branch name for uniqueness.
+          UNIQUE_BRANCH="${{ steps.extract_data.outputs.branch_name }}-$(date +%s)"
+          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_OUTPUT
+          echo "UNIQUE_BRANCH=$UNIQUE_BRANCH" >> $GITHUB_ENV
 
+      - name: Create new branch from main
+        run: |
+          # Use the unique branch name.
+          echo "Using branch: $UNIQUE_BRANCH"
+          git checkout main
+          git checkout -b "$UNIQUE_BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config --global credential.helper store
-
-          # Set remote URL with authentication
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-
-          # Fetch the latest from origin
-          git fetch origin
-
-          # If the branch exists on the remote, check it out and try to update it
-          if git ls-remote --exit-code --heads origin "$BRANCH_NAME"; then
-            echo "Branch exists remotely. Checking out branch..."
-            git checkout "$BRANCH_NAME"
-
-            # Pull the latest changes with rebase and auto-stash.
-            # If a rebase conflict occurs (e.g. in the workflow file), skip the conflicting commit.
-            set +e
-            git pull --rebase --autostash origin "$BRANCH_NAME"
-            RET=$?
-            if [ $RET -ne 0 ]; then
-              echo "Rebase encountered a conflict. Attempting to skip the conflicting commit..."
-              git rebase --skip || { echo "Rebase failed even after skipping; aborting rebase."; git rebase --abort; exit 1; }
-            fi
-            set -e
-          else
-            echo "Branch does not exist remotely. Creating new branch..."
-            git checkout -b "$BRANCH_NAME"
-          fi
-
-          # Push the branch (set upstream if new)
-          git push --set-upstream origin "$BRANCH_NAME"
+          git push --set-upstream origin "$UNIQUE_BRANCH"
 
       - name: Update CSV
         run: |
-          # Only update the CSV if the numeric ID exists and no errors were reported.
           if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-
-            # Debug: Print extracted numeric ID
             echo "Extracted Numeric ID: $NUMERIC_ID"
-
-            # Ensure NUMERIC_ID is a valid integer
             if ! [[ "$NUMERIC_ID" =~ ^[0-9]+$ ]]; then
               echo "Error: Invalid or missing Numeric ID: '$NUMERIC_ID'"
               exit 1
             fi
-
-            # Update the CSV file using awk
             awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
               'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
-
             git add data/airports.csv
-
-            # Commit the changes
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
-
-            # Ensure BRANCH_NAME is correctly set
-            BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
-            if [ -z "$BRANCH_NAME" ]; then
-              echo "Error: BRANCH_NAME is empty!"
-              exit 1
-            fi
-
-            # Debugging: Print branch name
-            echo "Pushing to branch: $BRANCH_NAME"
-
-            # Force push (with lease) to update the remote branch if necessary
-            git push --force-with-lease origin "$BRANCH_NAME"
+            echo "Pushing to branch: $UNIQUE_BRANCH"
+            git push --force-with-lease origin "$UNIQUE_BRANCH"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
@@ -329,7 +283,7 @@ jobs:
 
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
-          branch: "${{ steps.extract_data.outputs.branch_name }}"
+          branch: "$UNIQUE_BRANCH"
           base: main
           labels: "awaiting review"
 
@@ -342,14 +296,9 @@ jobs:
           ERRORS: ${{ env.ERRORS }}
         with:
           script: |
-            // Parse the old CSV row.
             const oldRow = process.env.EXISTING_ROW || "";
             const oldValues = oldRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(val => val.replace(/^"|"$/g, ''));
-            
-            // Parse the new fields from the issue.
             const newFields = JSON.parse(process.env.NEW_FIELDS);
-            
-            // Define the fields to show.
             const fields = [
               "ICAO Code", 
               "IATA Code", 
@@ -362,7 +311,7 @@ jobs:
               "Wikipedia",
               "Keywords",
               "Timezone", 
-              "Airport Type" 
+              "Airport Type"
             ];
             const fieldIndices = {
               "ICAO Code": 2,
@@ -378,9 +327,7 @@ jobs:
               "Timezone": 18,
               "Airport Type": 19
             };
-
-            let table = "| Field | Before | After |\n";
-            table += "| --- | --- | --- |\n";
+            let table = "| Field | Before | After |\n| --- | --- | --- |\n";
             fields.forEach(field => {
               const idx = fieldIndices[field];
               const oldVal = (oldValues[idx] || "").trim();
@@ -389,22 +336,18 @@ jobs:
               const displayNew = newVal === "" ? "*empty*" : newVal;
               table += `| ${field} | ${displayOld} | ${displayNew} |\n`;
             });
-
             let errorSection = "";
             if (process.env.ERRORS && process.env.ERRORS.trim() !== "") {
               errorSection = "\n\n### Errors / Issues Found\n\n" + process.env.ERRORS;
             }
-
             const prUrl = process.env.PULL_REQUEST_URL;
             const issueNumber = context.payload.issue.number;
             const body = `✅ **This request has been processed automatically.**\n\n` +
                          `📄 A **Pull Request** has been created: [View PR](${prUrl})\n\n` +
-                         `### Changes Overview\n\n` +
-                         `${table}` +
+                         `### Changes Overview\n\n${table}` +
                          errorSection + "\n\n" +
                          `🏷️ Label: \`awaiting review\`\n` +
                          `🚀 Maintainers will review this update before merging.`;
-
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
