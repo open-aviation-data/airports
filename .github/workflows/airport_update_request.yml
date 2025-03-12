@@ -262,14 +262,6 @@ jobs:
       - name: Debug Before PR Creation
         run: echo "Preparing to create pull request"
 
-      - name: Debug PR Step
-        run: |
-          echo "Branch Name: ${{ env.UNIQUE_BRANCH }}"
-          echo "Checking if PR exists..."
-          gh pr list --state open --json title,headRefName
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create Pull Request
         id: create_pr
         uses: peter-evans/create-pull-request@v7
@@ -297,6 +289,14 @@ jobs:
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
           labels: "awaiting review"
+
+      - name: Debug PR Step
+        run: |
+          echo "Branch Name: ${{ env.UNIQUE_BRANCH }}"
+          echo "Checking if PR exists..."
+          gh pr list --state open --json title,headRefName
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Debug After PR Creation
         run: echo "PR creation step executed"
