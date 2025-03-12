@@ -204,7 +204,7 @@ jobs:
 
             git add data/airports.csv
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
-            git push --set-upstream origin "$BRANCH_NAME"
+            git push
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
