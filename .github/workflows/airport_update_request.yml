@@ -173,7 +173,7 @@ jobs:
         run: |
           # Only update the CSV if the numeric ID exists and no errors were reported.
           if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
-            NUMERIC_ID=$(jq -r '.["Numeric ID"]' <<< ${{ steps.extract_data.outputs.fields }})
+            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
             awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
               'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
