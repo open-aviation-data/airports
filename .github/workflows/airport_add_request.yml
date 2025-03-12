@@ -96,12 +96,13 @@ jobs:
             This PR was **automatically generated** from an airport request issue.
             
             ### ✈️ New Airport Details:
-            - **Name:** $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }})
-            - **ICAO:** $(jq -r '.fields["ICAO Code"]' <<< ${{ steps.extract_data.outputs }})
-            - **IATA:** $(jq -r '.fields["IATA Code"]' <<< ${{ steps.extract_data.outputs }})
-            - **Country:** $(jq -r '.fields["Country"]' <<< ${{ steps.extract_data.outputs }})
-            - **Timezone:** $(jq -r '.fields["Timezone"]' <<< ${{ steps.extract_data.outputs }})
-            - **Type:** $(jq -r '.fields["Airport Type"]' <<< ${{ steps.extract_data.outputs }})
+            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
+            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
+            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
+            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
+            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
+            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            - **Keywords:** ${{ steps.extract_data.outputs.fields['Keywords'] }}
             
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this submission before merging.

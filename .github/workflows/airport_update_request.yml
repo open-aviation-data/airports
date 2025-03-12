@@ -153,18 +153,18 @@ jobs:
         id: create_pr
         uses: peter-evans/create-pull-request@v5
         with:
-          title: "🛫 Update airport: $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }})"
+          title: "🛫 Update airport: ${{ fromJson(steps.extract_data.outputs.fields['Airport Name']) }}"
           body: |
             This PR was **automatically generated** from an airport update request issue.
             
             ### ✈️ Updated Airport Details:
-            - **Name:** $(jq -r '.["Airport Name"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **ICAO:** $(jq -r '.["ICAO Code"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **IATA:** $(jq -r '.["IATA Code"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **Country:** $(jq -r '.["Country"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **Timezone:** $(jq -r '.["Timezone"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **Type:** $(jq -r '.["Airport Type"]' <<< ${{ steps.extract_data.outputs.fields }})
-            - **Keywords:** $(jq -r '.["Keywords"]' <<< ${{ steps.extract_data.outputs.fields }})
+            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
+            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
+            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
+            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
+            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
+            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
+            - **Keywords:** ${{ steps.extract_data.outputs.fields['Keywords'] }}
             
             🏷️ Label: `awaiting review`  
             🔎 **Maintainers:** Please validate this update before merging.
