@@ -213,27 +213,42 @@ jobs:
             echo "UPDATED_ROW=" >> $GITHUB_ENV
           fi
 
-      - name: Create new branch
+      - name: Create or Checkout Branch
         run: |
           BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
+          echo "Using branch: $BRANCH_NAME"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config --global credential.helper store
-          git config --global pull.rebase true
-          
-          # Checkout the new branch
-          git checkout -b "$BRANCH_NAME"
-          
-          # Authenticate with GitHub
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
-          
-          # Fetch the latest changes
-          git fetch origin "$BRANCH_NAME"
-          
-          # Pull the latest changes
-          git pull origin "$BRANCH_NAME"
-          
-          # Push the new branch
+
+          # Set remote URL with authentication
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+
+          # Fetch the latest from origin
+          git fetch origin
+
+          # If the branch exists on the remote, check it out and try to update it
+          if git ls-remote --exit-code --heads origin "$BRANCH_NAME"; then
+            echo "Branch exists remotely. Checking out branch..."
+            git checkout "$BRANCH_NAME"
+
+            # Pull the latest changes with rebase and auto-stash.
+            # If a rebase conflict occurs (e.g. in the workflow file), skip the conflicting commit.
+            set +e
+            git pull --rebase --autostash origin "$BRANCH_NAME"
+            RET=$?
+            if [ $RET -ne 0 ]; then
+              echo "Rebase encountered a conflict. Attempting to skip the conflicting commit..."
+              git rebase --skip || { echo "Rebase failed even after skipping; aborting rebase."; git rebase --abort; exit 1; }
+            fi
+            set -e
+          else
+            echo "Branch does not exist remotely. Creating new branch..."
+            git checkout -b "$BRANCH_NAME"
+          fi
+
+          # Push the branch (set upstream if new)
           git push --set-upstream origin "$BRANCH_NAME"
 
       - name: Update CSV
