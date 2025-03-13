@@ -135,7 +135,7 @@ jobs:
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "Update airport: '${{ steps.extract.outputs.fields }}' | jq -r '."Airport Name"'"
+          title: "🛫 Update airport"
           branch: ${{ steps.extract.outputs.branch_name }}
           base: main
           labels: awaiting-review
