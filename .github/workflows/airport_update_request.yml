@@ -50,9 +50,11 @@ jobs:
               fields['Airport Name'].toLowerCase().replace(/[^a-z0-9]+/g, '-')
             }-${Date.now()}`;
             
+            const t = Date.now();
+            
             return {
               fields: JSON.stringify(fields),
-              branch_name: branchName,
+              branch_name: 'update-airport-' + t
               errors: errors.join('; ')
             };
 
