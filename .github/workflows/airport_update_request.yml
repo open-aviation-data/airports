@@ -158,7 +158,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           title: "🛫 Update airport"
-          branch: main
+          branch: ${{ steps.extract_data.outputs.branch_name }}
+          base: main
           labels: awaiting-review
           body: |
             Automated airport update from issue #${{ github.event.issue.number }}
