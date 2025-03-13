@@ -37,7 +37,7 @@ fields:
 | `region`            | Sub-region/state code                               |
 | `municipality`      | Municipality name                                   |
 | `scheduled_service` | `yes` or `no` (scheduled flights)                   |
-| `web_url`           | Official airport website (if available)             |
+| `web_url`           | Official airport website                            |
 | `wikipedia_url`     | Wikipedia page URL                                  |
 | `keywords`          | Search keywords (comma-separated)                   |
 | `timezone`          | IANA timezone (e.g., `Europe/Oslo`)                 |
