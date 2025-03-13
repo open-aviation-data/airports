@@ -18,45 +18,60 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract Issue Data
-        id: extract
+      - name: Extract issue data
+        id: extract_data
         uses: actions/github-script@v6
         with:
           script: |
             const issue = context.payload.issue;
-            const body = issue.body.split('\n').map(l => l.trim());
-            
-            // Simple field extraction (assumes ### Field Name followed by value)
             const fields = {};
-            let currentField = null;
+            let errors = [];
             
-            body.forEach(line => {
-              const fieldMatch = line.match(/^### (.+)/);
-              if (fieldMatch) {
-                currentField = fieldMatch[1].trim();
-                fields[currentField] = '';
-              } else if (currentField && line && line !== '_No response_') {
-                fields[currentField] = line;
+            // Split issue body into lines and extract key/value pairs based on headers.
+            const bodyLines = issue.body.split('\n');
+            let lastKey = null;
+            for (const line of bodyLines) {
+              const match = line.match(/^### (.+)$/);
+              if (match) {
+                lastKey = match[1].trim();
+                fields[lastKey] = "";
+              } else if (lastKey) {
+                const value = line.trim();
+                if (value && value !== "_No response_") {
+                  fields[lastKey] += (fields[lastKey] ? " " : "") + value;
+                }
               }
-            });
+            }
             
-            // Validate required fields
-            const errors = [];
-            if (!fields['Numeric ID']) errors.push('Missing Numeric ID');
-            if (!fields['Airport Name']) errors.push('Missing Airport Name');
+            // Validate required fields.
+            if (!fields['Numeric ID']) {
+              errors.push('Missing required field: Numeric ID');
+            }
+            if (!fields['Airport Name']) {
+              errors.push('Missing required field: Airport Name');
+            }
             
-            // Generate branch name
-            const branchName = `update-airport-${fields['Numeric ID']}-${
-              fields['Airport Name'].toLowerCase().replace(/[^a-z0-9]+/g, '-')
-            }-${Date.now()}`;
+            // Convert Numeric ID to integer.
+            fields['Numeric ID'] = fields['Numeric ID'] ? parseInt(fields['Numeric ID'], 10) : 0;
             
-            const t = Date.now();
+            core.setOutput('fields', JSON.stringify(fields));
             
-            return {
-              fields: JSON.stringify(fields),
-              branch_name: 'update-airport-' + t,
-              errors: errors.join('; ')
-            };
+            // Function to sanitize branch names.
+            function sanitizeBranchName(input) {
+              return input
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
+                .toLowerCase()
+                .slice(0, 40);
+            }
+            
+            const sanitizedAirportName = sanitizeBranchName(fields['Airport Name'] || 'unknown');
+            const branchName = `update-airport-${fields['Numeric ID']}-${sanitizedAirportName}`;
+            core.setOutput('branch_name', branchName);
+            core.exportVariable('ERRORS', errors.join("; "));
 
       - name: Check if numeric ID exists in CSV
         id: check_numeric_id
@@ -67,6 +82,8 @@ jobs:
           else
             echo "ID_FOUND=false" >> $GITHUB_ENV
             echo "ERRORS=${ERRORS}; Numeric ID not found in CSV" >> $GITHUB_ENV
+            echo "Exiting workflow because Numeric ID was not found in CSV"
+            exit 1
           fi
 
       - name: Get Existing Data
