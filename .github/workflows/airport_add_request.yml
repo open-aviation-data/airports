@@ -44,8 +44,7 @@ jobs:
 
             // Validate required fields
             const requiredFields = [
-              'Airport Name', 'Country', 'Latitude', 'Longitude',
-              'Airport Type', 'Timezone (IANA)'
+              'Airport Name',
             ];
             
             requiredFields.forEach(field => {
@@ -91,29 +90,30 @@ jobs:
           }
 
           # CSV column mapping
+          # CSV column mapping
           NEW_ROW=(
-            "$NEXT_ID"                                   # id
-            '""'                                         # ident
-            "\"$(get_field 'ICAO Code')\""               # icao
-            "\"$(get_field 'IATA Code')\""               # iata
-            '""'                                         # gps_code
-            '""'                                         # local_code
-            "\"$(get_field 'Airport Name')\""            # name
-            "\"$(get_field 'Latitude')\""                # latitude
-            "\"$(get_field 'Longitude')\""               # longitude
-            '""'                                         # elevation
-            '""'                                         # continent
-            "\"$(get_field 'Country')\""                 # country
-            '""'                                         # region
-            "\"$(get_field 'Municipality')\""            # municipality
-            '""'                                         # scheduled_service
-            "\"$(get_field 'Official Website URL')\""     # web_url
-            "\"$(get_field 'Wikipedia URL')\""           # wikipedia_url
-            "\"$(get_field 'Keywords')\""                # keywords
-            "\"$(get_field 'Timezone (IANA)')\""         # timezone
-            "\"$(get_field 'Airport Type')\""            # airport_type
+          "$NEXT_ID"                                   # id
+          ""                                           # ident
+          "$(get_field 'ICAO Code')"                   # icao
+          "$(get_field 'IATA Code')"                   # iata
+          ""                                           # gps_code
+          ""                                           # local_code
+          "$(get_field 'Airport Name')"                # name
+          "$(get_field 'Latitude')"                    # latitude
+          "$(get_field 'Longitude')"                   # longitude
+          ""                                           # elevation
+          ""                                           # continent
+          "$(get_field 'Country')"                     # country
+          ""                                           # region
+          "$(get_field 'Municipality')"                # municipality
+          ""                                           # scheduled_service
+          "$(get_field 'Official Website URL')"        # web_url
+          "$(get_field 'Wikipedia URL')"               # wikipedia_url
+          "\"$(get_field 'Keywords')\""                # keywords (only this column is wrapped in quotes)
+          "$(get_field 'Timezone (IANA)')"             # timezone
+          "$(get_field 'Airport Type')"                # airport_type
           )
-
+  
           # Join array to CSV row
           CSV_ROW=$(IFS=','; echo "${NEW_ROW[*]}")
           echo "csv_row=$CSV_ROW" >> $GITHUB_OUTPUT
