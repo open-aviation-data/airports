@@ -56,19 +56,21 @@ jobs:
               errors: errors.join('; ')
             };
 
-      - name: Validate Numeric ID
-        id: validate
+      - name: Check if numeric ID exists in CSV
+        id: check_numeric_id
         run: |
-          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
-          if ! grep -q "^$NUMERIC_ID," data/airports.csv; then
-            echo "error=Numeric ID $NUMERIC_ID not found in CSV" >> $GITHUB_OUTPUT
-            exit 1
+          NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
+          if grep -q "^${NUMERIC_ID}," data/airports.csv; then
+            echo "ID_FOUND=true" >> $GITHUB_ENV
+          else
+            echo "ID_FOUND=false" >> $GITHUB_ENV
+            echo "ERRORS=${ERRORS}; Numeric ID not found in CSV" >> $GITHUB_ENV
           fi
 
       - name: Get Existing Data
         id: existing
         run: |
-          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
+          NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
           echo "row=$(grep "^$NUMERIC_ID," data/airports.csv)" >> $GITHUB_OUTPUT
 
       - name: Merge Data
@@ -120,7 +122,7 @@ jobs:
 
       - name: Update CSV
         run: |
-          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
+          NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
           awk -v id="$NUMERIC_ID" -v new="${{ steps.merge.outputs.updated_row }}" '
             BEGIN {FS=OFS=","} 
             $1 == id {$0 = new} 
