@@ -178,7 +178,7 @@ jobs:
             git add -A
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
             echo "Pushing to branch: ${{ env.UNIQUE_BRANCH }}"
-            git push --force-with-lease origin "${{ env.UNIQUE_BRANCH }}"
+            git push origin "${{ env.UNIQUE_BRANCH }}"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
