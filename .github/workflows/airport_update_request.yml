@@ -27,7 +27,7 @@ jobs:
             const fields = {};
             let errors = [];
             
-            // Split issue body into lines and extract key/value pairs based on headers.
+            // Split issue body into lines and extract key/value pairs using headers.
             const bodyLines = issue.body.split('\n');
             let lastKey = null;
             for (const line of bodyLines) {
@@ -95,111 +95,50 @@ jobs:
             echo "EXISTING_ROW=" >> $GITHUB_ENV
           fi
 
-      - name: Merge existing and new data
+      - name: Merge existing and new data (raw CSV values)
         id: merge_data
         run: |
           if [ "$ID_FOUND" = "true" ]; then
-            # Extract Numeric ID from JSON.
+            # Extract Numeric ID.
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
           
             # Get the existing CSV row.
             EXISTING_ROW=$(echo "${EXISTING_ROW}")
           
-            # Split the CSV row into an array (assume 20 columns).
+            # Split the CSV row into an array (assuming 20 columns).
             OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
           
             # Save the JSON fields.
             NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
             get_field() {
-              echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // empty')
+              echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // ""')
             }
           
-            # Build UPDATED_ROW column by column.
+            # Build UPDATED_ROW without quotes.
             UPDATED_ROW="$NUMERIC_ID"  # Column 0: id
-          
-            # Column 1: ident (preserve old)
-            updated_ident="${OLD_DATA[1]}"
-            UPDATED_ROW+=",\"${updated_ident}\""
-          
-            # Column 2: icao -> "ICAO Code"
-            new_icao=$(get_field 'ICAO Code')
-            if [ -z "$new_icao" ]; then new_icao="${OLD_DATA[2]}"; fi
-            UPDATED_ROW+=",\"${new_icao}\""
-          
-            # Column 3: iata -> "IATA Code"
-            new_iata=$(get_field 'IATA Code')
-            if [ -z "$new_iata" ]; then new_iata="${OLD_DATA[3]}"; fi
-            UPDATED_ROW+=",\"${new_iata}\""
-          
-            # Column 4: gps_code (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[4]}\""
-          
-            # Column 5: local_code (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[5]}\""
-          
-            # Column 6: name -> "Airport Name"
-            new_name=$(get_field 'Airport Name')
-            if [ -z "$new_name" ]; then new_name="${OLD_DATA[6]}"; fi
-            UPDATED_ROW+=",\"${new_name}\""
-          
-            # Column 7: latitude -> "Latitude"
-            new_lat=$(get_field 'Latitude')
-            if [ -z "$new_lat" ]; then new_lat="${OLD_DATA[7]}"; fi
-            UPDATED_ROW+=",\"${new_lat}\""
-          
-            # Column 8: longitude -> "Longitude"
-            new_long=$(get_field 'Longitude')
-            if [ -z "$new_long" ]; then new_long="${OLD_DATA[8]}"; fi
-            UPDATED_ROW+=",\"${new_long}\""
-          
-            # Column 9: elevation (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[9]}\""
-          
-            # Column 10: continent (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[10]}\""
-          
-            # Column 11: country -> "Country"
-            new_country=$(get_field 'Country')
-            if [ -z "$new_country" ]; then new_country="${OLD_DATA[11]}"; fi
-            UPDATED_ROW+=",\"${new_country}\""
-          
-            # Column 12: region (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[12]}\""
-          
-            # Column 13: municipality -> "Municipality"
-            new_muni=$(get_field 'Municipality')
-            if [ -z "$new_muni" ]; then new_muni="${OLD_DATA[13]}"; fi
-            UPDATED_ROW+=",\"${new_muni}\""
-          
-            # Column 14: scheduled_service (preserve old)
-            UPDATED_ROW+=",\"${OLD_DATA[14]}\""
-          
-            # Column 15: web_url -> "New Official Website URL (if applicable)"
-            new_web=$(get_field 'New Official Website URL (if applicable)')
-            if [ -z "$new_web" ]; then new_web="${OLD_DATA[15]}"; fi
-            UPDATED_ROW+=",\"${new_web}\""
-          
-            # Column 16: wikipedia_url -> "New Wikipedia URL (if applicable)"
-            new_wiki=$(get_field 'New Wikipedia URL (if applicable)')
-            if [ -z "$new_wiki" ]; then new_wiki="${OLD_DATA[16]}"; fi
-            UPDATED_ROW+=",\"${new_wiki}\""
-          
-            # Column 17: keywords -> "Keywords"
-            new_keywords=$(get_field 'Keywords')
-            if [ -z "$new_keywords" ]; then new_keywords="${OLD_DATA[17]}"; fi
-            UPDATED_ROW+=",\"${new_keywords}\""
-          
-            # Column 18: timezone -> "Timezone"
-            new_tz=$(get_field 'Timezone')
-            if [ -z "$new_tz" ]; then new_tz="${OLD_DATA[18]}"; fi
-            UPDATED_ROW+=",\"${new_tz}\""
-          
-            # Column 19: airport_type -> "Airport Type (if changing)"
+            UPDATED_ROW+=",$(get_field 'ident' || echo "${OLD_DATA[1]}")"  # Column 1: ident (if you update, else preserve)
+            UPDATED_ROW+=",$(get_field 'ICAO Code' || echo "${OLD_DATA[2]}")"  # Column 2: icao
+            UPDATED_ROW+=",$(get_field 'IATA Code' || echo "${OLD_DATA[3]}")"  # Column 3: iata
+            UPDATED_ROW+=",$(echo "${OLD_DATA[4]}")"  # Column 4: gps_code (preserve)
+            UPDATED_ROW+=",$(echo "${OLD_DATA[5]}")"  # Column 5: local_code (preserve)
+            UPDATED_ROW+=",$(get_field 'Airport Name' || echo "${OLD_DATA[6]}")"  # Column 6: name
+            UPDATED_ROW+=",$(get_field 'Latitude' || echo "${OLD_DATA[7]}")"  # Column 7: latitude
+            UPDATED_ROW+=",$(get_field 'Longitude' || echo "${OLD_DATA[8]}")"  # Column 8: longitude
+            UPDATED_ROW+=",$(echo "${OLD_DATA[9]}")"  # Column 9: elevation (preserve)
+            UPDATED_ROW+=",$(echo "${OLD_DATA[10]}")" # Column 10: continent (preserve)
+            UPDATED_ROW+=",$(get_field 'Country' || echo "${OLD_DATA[11]}")"  # Column 11: country
+            UPDATED_ROW+=",$(echo "${OLD_DATA[12]}")"  # Column 12: region (preserve)
+            UPDATED_ROW+=",$(get_field 'Municipality' || echo "${OLD_DATA[13]}")"  # Column 13: municipality
+            UPDATED_ROW+=",$(echo "${OLD_DATA[14]}")"  # Column 14: scheduled_service (preserve)
+            UPDATED_ROW+=",$(get_field 'New Official Website URL (if applicable)' || echo "${OLD_DATA[15]}")"  # Column 15: web_url
+            UPDATED_ROW+=",$(get_field 'New Wikipedia URL (if applicable)' || echo "${OLD_DATA[16]}")"  # Column 16: wikipedia_url
+            UPDATED_ROW+=",$(get_field 'Keywords' || echo "${OLD_DATA[17]}")"  # Column 17: keywords
+            UPDATED_ROW+=",$(get_field 'Timezone' || echo "${OLD_DATA[18]}")"  # Column 18: timezone
             new_type=$(get_field 'Airport Type (if changing)')
             if [ "$new_type" = "None" ] || [ "$new_type" = "No Change" ] || [ -z "$new_type" ]; then
               new_type="${OLD_DATA[19]}"
             fi
-            UPDATED_ROW+=",\"${new_type}\""
+            UPDATED_ROW+=",$new_type"  # Column 19: airport_type
           
             echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
           else
@@ -224,7 +163,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
           git push --set-upstream origin "${{ env.UNIQUE_BRANCH }}"
 
-      - name: Update CSV
+      - name: Update CSV and commit changes
         run: |
           if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
             NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
@@ -238,8 +177,8 @@ jobs:
               data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
             git add -A
             git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
-            echo "Pushing to branch: $UNIQUE_BRANCH"
-            git push --force-with-lease origin "$UNIQUE_BRANCH"
+            echo "Pushing to branch: ${{ env.UNIQUE_BRANCH }}"
+            git push --force-with-lease origin "${{ env.UNIQUE_BRANCH }}"
           else
             echo "Skipping CSV update due to errors or missing numeric ID."
           fi
@@ -260,7 +199,8 @@ jobs:
           echo "KEYWORDS=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Keywords"' )" >> $GITHUB_ENV
 
       - name: Debug Before PR Creation
-        run: echo "Preparing to create pull request"
+        run: |
+          echo "Preparing to create pull request on branch: ${{ env.UNIQUE_BRANCH }}"
 
       - name: Create Pull Request
         id: create_pr
@@ -269,8 +209,8 @@ jobs:
           token: ${{ secrets.PAT }}
           commit-message: '[create-pull-request] automated change'
           base: 'main'
-          branch: "${{ env.UNIQUE_BRANCH }}"   # ✅ Use env variable
-          delete-branch: true
+          branch: "${{ env.UNIQUE_BRANCH }}"
+          delete-branch: false
           title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
           body: |
             This PR was **automatically generated** from an airport update request issue.
@@ -311,7 +251,7 @@ jobs:
         with:
           script: |
             const oldRow = process.env.EXISTING_ROW || "";
-            const oldValues = oldRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(val => val.replace(/^"|"$/g, ''));
+            const oldValues = oldRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(val => val.trim());
             const newFields = JSON.parse(process.env.NEW_FIELDS);
             const fields = [
               "ICAO Code", 
@@ -344,17 +284,15 @@ jobs:
             let table = "| Field | Before | After |\n| --- | --- | --- |\n";
             fields.forEach(field => {
               const idx = fieldIndices[field];
-              const oldVal = (oldValues[idx] || "").trim();
-              const newVal = (newFields[field] || "").trim() || oldVal;
-              const displayOld = oldVal === "" ? "*empty*" : oldVal;
-              const displayNew = newVal === "" ? "*empty*" : newVal;
-              table += `| ${field} | ${displayOld} | ${displayNew} |\n`;
+              const oldVal = oldValues[idx] || "";
+              const newVal = newFields[field] || oldVal;
+              table += `| ${field} | ${oldVal || "*empty*"} | ${newVal || "*empty*"} |\n`;
             });
             let errorSection = "";
             if (process.env.ERRORS && process.env.ERRORS.trim() !== "") {
               errorSection = "\n\n### Errors / Issues Found\n\n" + process.env.ERRORS;
             }
-            const prUrl = process.env.PULL_REQUEST_URL;
+            const prUrl = process.env.PULL_REQUEST_URL || "N/A";
             const issueNumber = context.payload.issue.number;
             const body = `✅ **This request has been processed automatically.**\n\n` +
                          `📄 A **Pull Request** has been created: [View PR](${prUrl})\n\n` +
