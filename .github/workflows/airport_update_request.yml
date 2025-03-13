@@ -114,24 +114,77 @@ jobs:
             ["Airport Type (if changing)"]=19
           )
           
+          # Create a JSON for changed fields to use in PR comments
+          echo "FIELD_NAME_MAP=(" > field_names.txt
+          echo '["0"]="Numeric ID"' >> field_names.txt
+          echo '["1"]="Ident"' >> field_names.txt
+          echo '["2"]="ICAO Code"' >> field_names.txt
+          echo '["3"]="IATA Code"' >> field_names.txt
+          echo '["4"]="Local Code"' >> field_names.txt
+          echo '["5"]="GPS Code"' >> field_names.txt
+          echo '["6"]="Airport Name"' >> field_names.txt
+          echo '["7"]="Latitude"' >> field_names.txt
+          echo '["8"]="Longitude"' >> field_names.txt
+          echo '["9"]="Elevation"' >> field_names.txt
+          echo '["10"]="Continent"' >> field_names.txt
+          echo '["11"]="Country"' >> field_names.txt
+          echo '["12"]="Region"' >> field_names.txt
+          echo '["13"]="Municipality"' >> field_names.txt
+          echo '["14"]="Scheduled Service"' >> field_names.txt
+          echo '["15"]="Official Website URL"' >> field_names.txt
+          echo '["16"]="Wikipedia URL"' >> field_names.txt
+          echo '["17"]="Keywords"' >> field_names.txt
+          echo '["18"]="Timezone"' >> field_names.txt
+          echo '["19"]="Airport Type"' >> field_names.txt
+          echo ")" >> field_names.txt
+          source field_names.txt
+          
           NEW_ROW=()
+          CHANGES_JSON="{"
           for i in "${!OLD[@]}"; do
             NEW_ROW[i]="${OLD[$i]}"
+          
+            # Add to JSON for tracking changes
+            if [ -n "${FIELD_NAME_MAP[$i]}" ]; then
+              CHANGES_JSON+="\"${FIELD_NAME_MAP[$i]}\":{\"old\":\"${OLD[$i]}\",\"new\":\"${OLD[$i]}\"},"
+            fi
           done
           
           # Update fields from issue
           for field in "${!COLUMN_MAP[@]}"; do
-            value=$(jq -r ".[\"$field\"] // empty" <<< "$FIELDS")
             index=${COLUMN_MAP[$field]}
+            value=$(jq -r ".[\"$field\"] // empty" <<< "$FIELDS")
           
             if [ -n "$value" ] && [ "$value" != "None" ] && [ "$value" != "No Change" ]; then
+              OLD_VALUE="${NEW_ROW[$index]}"
               NEW_ROW[$index]="$value"
+          
+              # Update JSON for changed field
+              if [ -n "${FIELD_NAME_MAP[$index]}" ]; then
+                CHANGES_JSON="$(echo "$CHANGES_JSON" | sed "s/\"${FIELD_NAME_MAP[$index]}\":{\"old\":\"${OLD_VALUE}\",\"new\":\"${OLD_VALUE]\"}/\"${FIELD_NAME_MAP[$index]}\":{\"old\":\"${OLD_VALUE}\",\"new\":\"$value\"}/g")"
+              fi
             fi
           done
+          
+          # Cleanup JSON
+          CHANGES_JSON="${CHANGES_JSON%,}"
+          CHANGES_JSON+="}"
           
           # Join array back to CSV
           UPDATED_ROW=$(IFS=','; echo "${NEW_ROW[*]}")
           echo "updated_row=$UPDATED_ROW" >> $GITHUB_OUTPUT
+          
+          # Save changes to file for PR comment
+          echo '$CHANGES_JSON' > changes.json
+          
+          # Get Airport name and IATA for PR title
+          AIRPORT_NAME="${NEW_ROW[6]}"
+          IATA_CODE="${NEW_ROW[3]}"
+          PR_TITLE="🛫 Update airport: $AIRPORT_NAME"
+          if [ -n "$IATA_CODE" ] && [ "$IATA_CODE" != "null" ]; then
+            PR_TITLE="$PR_TITLE ($IATA_CODE)"
+          fi
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
 
       - name: Create Branch
         run: |
@@ -163,14 +216,51 @@ jobs:
           git commit -m "Update airport"
           git push origin ${{ steps.extract_data.outputs.branch_name }}
 
-      - name: Debug Git State Before PR
+      - name: Generate Changes Table
+        id: changes_table
         run: |
-          echo "🔍 Checking Git Status..."
-          git status
-          echo "🔍 Recent commits:"
-          git log --oneline -5
-          echo "🔍 Branch info:"
-          git branch -vv
+          IFS=',' read -ra OLD < <(echo "${{ steps.existing.outputs.row }}")
+          IFS=',' read -ra NEW < <(echo "${{ steps.merge.outputs.updated_row }}")
+          
+          # Create a mapping for column names
+          declare -A COL_NAMES=(
+            ["0"]="Numeric ID"
+            ["1"]="Ident"
+            ["2"]="ICAO Code"
+            ["3"]="IATA Code"
+            ["4"]="Local Code"
+            ["5"]="GPS Code"
+            ["6"]="Airport Name"
+            ["7"]="Latitude"
+            ["8"]="Longitude"
+            ["9"]="Elevation"
+            ["10"]="Continent"
+            ["11"]="Country"
+            ["12"]="Region"
+            ["13"]="Municipality"
+            ["14"]="Scheduled Service"
+            ["15"]="Official Website URL"
+            ["16"]="Wikipedia URL"
+            ["17"]="Keywords"
+            ["18"]="Timezone"
+            ["19"]="Airport Type"
+          )
+          
+          # Start building the table
+          TABLE="| Field | Previous Value | New Value |\n|-------|---------------|----------|\n"
+          
+          # Compare each field and add to table if different
+          for i in "${!OLD[@]}"; do
+            if [ "${OLD[$i]}" != "${NEW[$i]}" ] && [ -n "${COL_NAMES[$i]}" ]; then
+              TABLE+="| ${COL_NAMES[$i]} | ${OLD[$i]} | ${NEW[$i]} |\n"
+            fi
+          done
+          
+          # Escape the table for GitHub Actions
+          ESCAPED_TABLE=$(echo "$TABLE" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | tr '\n' ' ')
+          echo "table<<EOF" >> $GITHUB_OUTPUT
+          echo "$ESCAPED_TABLE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         if: success()
@@ -181,27 +271,42 @@ jobs:
           script: |
             try {
               const { owner, repo } = context.repo;
+            
+              // Create the PR
               const result = await github.rest.pulls.create({
                 owner,
                 repo,
-                title: '🛫 Update airport',
+                title: '${{ steps.merge.outputs.pr_title }}',
                 head: '${{ steps.extract_data.outputs.branch_name }}',
                 base: 'main',
                 body: `Automated airport update from issue #${context.payload.issue.number}
             
-                **Changes:**
-                \`\`\`diff
-                -${{ steps.existing.outputs.row }}
-                +${{ steps.merge.outputs.updated_row }}
-                \`\`\``,
+                ### Detailed Changes
+                ${{ steps.changes_table.outputs.table }}`,
               });
             
-              // Add label to the PR
+              // Add labels to the PR
               await github.rest.issues.addLabels({
                 owner,
                 repo,
                 issue_number: result.data.number,
-                labels: ['awaiting-review']
+                labels: ['awaiting review', 'update airport']
+              });
+            
+              // Request review
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: result.data.number,
+                reviewers: ['MauritsvanderZee']
+              });
+            
+              // Add awaiting review label to the originating issue
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: context.payload.issue.number,
+                labels: ['awaiting review']
               });
             
               console.log(`Pull request created: #${result.data.number}`);
@@ -212,22 +317,3 @@ jobs:
               core.setFailed(`Failed to create PR: ${error.message}`);
               return null;
             }
-
-      - name: Check outputs
-        if: ${{ steps.cpr.outputs.pull-request-number }}
-        run: |
-          echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
-          echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"
-
-      - name: Comment on Issue
-        if: always()
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const prUrl = '${{ steps.create-pr.outputs.pull-request-url }}' || 'N/A';
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.issue.number,
-              body: `🚀 Update processed! ${prUrl ? `[View PR](${prUrl})` : ''}`
-            });
