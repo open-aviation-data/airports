@@ -163,6 +163,15 @@ jobs:
           git commit -m "Update airport"
           git push origin ${{ steps.extract_data.outputs.branch_name }}
 
+      - name: Debug Git State Before PR
+        run: |
+          echo "🔍 Checking Git Status..."
+          git status
+          echo "🔍 Recent commits:"
+          git log --oneline -5
+          echo "🔍 Branch info:"
+          git branch -vv
+
       - name: Create Pull Request
         id: cpr
         uses: peter-evans/create-pull-request@v7
