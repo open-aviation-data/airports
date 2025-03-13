@@ -96,7 +96,7 @@ jobs:
         id: merge
         run: |
           IFS=',' read -ra OLD < <(echo "${{ steps.existing.outputs.row }}")
-          FIELDS='${{ steps.extract.outputs.fields }}'
+          FIELDS='${{ steps.extract_data.outputs.fields }}'
           
           # Map issue fields to CSV columns (0-based index)
           declare -A COLUMN_MAP=(
@@ -135,7 +135,7 @@ jobs:
 
       - name: Create Branch
         run: |
-          git checkout -b ${{ steps.extract.outputs.branch_name }}
+          git checkout -b ${{ steps.extract_data.outputs.branch_name }}
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
@@ -149,15 +149,16 @@ jobs:
           ' data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
           
           git add data/airports.csv
-          git commit -m "Update airport $NUMERIC_ID: $(echo '${{ steps.extract.outputs.fields }}' | jq -r '."Airport Name"')"
-          git push origin ${{ steps.extract.outputs.branch_name }}
+          git commit -m "Update airport $NUMERIC_ID: $(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Airport Name"')"
+          git push origin ${{ steps.extract_data.outputs.branch_name }}
 
       - name: Create PR
+        id: create-pr
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           title: "🛫 Update airport"
-          branch: ${{ steps.extract.outputs.branch_name }}
+          branch: ${{ steps.extract_data.outputs.branch_name }}
           base: main
           labels: awaiting-review
           body: |
