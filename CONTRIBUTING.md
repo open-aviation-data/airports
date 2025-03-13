@@ -5,50 +5,63 @@ database, and your help is invaluable.
 
 ## 🛫 How to contribute
 
-### 📥 Submitting a new airport or updating data
+### 🚀 Submit a new airport or update an existing one
 
-1. **Fork the repository** on GitHub
-2. **Edit the **`airports.csv`** file** to add or modify an airport entry
-3. **Ensure data accuracy**:
-    - Use official sources where possible (e.g., ICAO, FAA, Eurocontrol)
-    - Follow the standard format for data fields
-4. **Commit your changes** with a descriptive message
-5. **Create a pull request** to propose your changes
+* 👉 To **add** a new airport:
+    * Open
+      an [Airport Add Request](https://github.com/open-aviation-data/airports/issues/new?template=airport_add_request.yml)
+    * Fill in the required fields, providing as much detail as possible
+* To **update** an existing airport:
+    * Open
+      an [Airport Update Request](https://github.com/open-aviation-data/airports/issues/new?template=airport_update_request.yml)
+    * Provide the airport’s numerical identifier and specify what needs to be updated
+
+📝 **For bulk changes**, you may fork the repository, edit airports.csv, and create a PR. If you're unsure, open a blank
+issue describing the request.
+
+> [!NOTE]  
+> Submissions via Issues will be automatically processed into pull requests for review
+> Bulk updates via PRs must follow the format rules outlined below
 
 ### ✅ Data validation checklist
 
-Before submitting, ensure:
+To maintain data quality, ensure that all fields follow the format rules below:
 
-- The `id` field is a valid **unique** integer based identifier
-- The `ident` field is a unique airport identifier (often ICAO)
-- The `iata` and `icao` codes are correct, if existing
-- The `gps_code` and `local_code` fields are correct, if existing
-- The `name` field is the official airport name
-- The **latitude and longitude values** are in decimal degrees
-- The `elevation` field is a valid integer value providing the elevation in feet above sea level
-- The `continent` field uses a valid [ISO 3166-1](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code
-- The `country` field uses a valid [ISO 3166-1 alpha-2](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2) code
-- The `region` field uses a valid sub-region/state code
-- The `municipality` field is the official municipality name
-- The `scheduled_service` field is either `yes` or `no`
-- The `web_url` field is the official airport website URL, if available
-- The `wikipedia_url` field is the Wikipedia page URL, if available
-- The `keywords` field contains relevant search keywords (comma-separated)
-- The `timezone` field uses a valid [IANA timezone](https://www.iana.org/time-zones) (Readable format of timezones can be found [HERE](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones))
-- The **airport type is one of the following**:
-    - `large_airport`
-    - `medium_airport`
-    - `small_airport`
-    - `heliport`
-    - `seaplane_base`
-    - `balloonport`
-    - `closed`
+| Field                 | Description                                                                                                          |
+|-----------------------|----------------------------------------------------------------------------------------------------------------------|
+| Numeric ID            | A unique integer identifier (auto-generated)                                                                         |
+| Ident                 | A unique airport identifier (usually ICAO code)                                                                      |
+| IATA Code             | The official 3-letter IATA airport code                                                                              |
+| ICAO Code             | The official 4-letter ICAO airport code                                                                              |
+| GPS Code / Local Code | Official GPS/local airport codes                                                                                     |
+| Name                  | The official airport name                                                                                            |
+| Latitude              | In decimal degrees (e.g. 40.712776)                                                                                  |
+| Longitude             | In decimal degrees (e.g. -74.005974)                                                                                 |
+| Elevation             | Elevation in feet above sea level                                                                                    |
+| Continent             | ISO 3166-1 continent code (e.g. ```EU```)                                                                            |
+| Country               | ISO 3166-1 alpha-2 country code (e.g. ```NO```)                                                                      |
+| Region                | The airport’s state/province code                                                                                    |
+| Municipality          | The city/town where the airport is located                                                                           |
+| Scheduled Service     | Either ```yes``` or ```no```                                                                                         |
+| Website URL           | Official airport website                                                                                             |
+| Wikipedia URL         | The Wikipedia page URL                                                                                               |
+| Keywords              | Comma-separated alternative names, nicknames, or cities served                                                       |
+| Timezone              | Valid [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g., ```Europe/London```)      |
+| Airport Type          | Must be one of: ```large_airport```, ```medium_airport```, ```small_airport```, ```heliport```, ```seaplane_base```, |
+|                       | ```balloonport```, ```closed```                                                                                      |
 
 ### 📢 Reporting issues
+Found incorrect or missing data? Open an issue and provide details with sources if possible.
 
-Found incorrect or missing data? Open an [issue on GitHub](https://github.com/open-aviation-data/airports/issues)
-and provide details with sources if possible.
+## 🔄 Bulk changes (alternative method)
+If you need to submit a bulk dataset update, follow these steps:
+
+* Fork the repository (optional, but recommended for tracking changes)
+* Modify airports.csv while ensuring data consistency
+* Create a pull request (PR) with a clear description of your changes
+
+> [!WARNING]
+> Bulk PRs must strictly follow the format rules in this document.
 
 ## 💙 Thank you!
-
-Your contributions help make this project valuable to the aviation community worldwide!
+Your contributions help make this project the most reliable open-source airport database for the aviation community worldwide! 🚀
