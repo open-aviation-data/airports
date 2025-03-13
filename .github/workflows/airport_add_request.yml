@@ -140,7 +140,7 @@ jobs:
       - name: Commit changes
         run: |
           git add data/airports.csv
-          git commit -m "Add new airport: ${{ fromJson(steps.extract_data.outputs.fields)['Airport Name'] }"
+          git commit -m "Add new airport"
           git push origin ${{ steps.extract_data.outputs.branch_name }}
 
       - name: Generate changes table
