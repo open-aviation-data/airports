@@ -54,7 +54,7 @@ jobs:
             
             return {
               fields: JSON.stringify(fields),
-              branch_name: 'update-airport-' + t
+              branch_name: 'update-airport-' + t,
               errors: errors.join('; ')
             };
 
