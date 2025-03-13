@@ -1,16 +1,21 @@
-name: Process New Airport Requests
+name: Process Airport Additions
 
 on:
   issues:
     types: [opened]
 
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
 jobs:
-  validate-and-create-pr:
-    if: contains(github.event.issue.labels.*.name, 'add airport') # Only trigger for "add airport" issues
+  process-addition:
+    if: contains(github.event.issue.labels.*.name, 'add airport')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Extract issue data
@@ -20,109 +25,207 @@ jobs:
           script: |
             const issue = context.payload.issue;
             const fields = {};
-
-            // Extract fields from the issue body
+            let errors = [];
+            
             const bodyLines = issue.body.split('\n');
+            let lastKey = null;
             for (const line of bodyLines) {
-              const match = line.match(/^### (.+):\s*(.*)$/);
+              const match = line.match(/^### (.+)$/);
               if (match) {
-                fields[match[1].trim()] = match[2].trim();
+                lastKey = match[1].trim();
+                fields[lastKey] = "";
+              } else if (lastKey) {
+                const value = line.trim();
+                if (value && value !== "_No response_") {
+                  fields[lastKey] += (fields[lastKey] ? " " : "") + value;
+                }
               }
             }
 
             // Validate required fields
-            const requiredFields = ['Airport Name'];
-            for (const field of requiredFields) {
-              if (!fields[field] || fields[field] === 'N/A') {
-                core.setFailed(`Missing required field: ${field}`);
-              }
-            }
-
-            // Validate and sanitize IATA Code
-            function sanitizeIATA(input) {
-              return input
-                .toUpperCase() // IATA codes are always uppercase
-                .replace(/[^A-Z0-9]/g, '') // Remove non-alphanumeric characters
-                .slice(0, 3); // Ensure max length is 3
-            }
-            fields['IATA Code'] = fields['IATA Code'] ? sanitizeIATA(fields['IATA Code']) : '';
-
-            // Sanitize airport name for branch name
-            function sanitize(input) {
-              return input
-                .normalize('NFD')  // Decomposes accents (e.g., é → e)
-                .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-                .replace(/[^a-zA-Z0-9]/g, '-') // Replace non-alphanumeric with hyphens
-                .toLowerCase()
-                .slice(0, 30); // Limit length for safety
-            }
-
-            // Determine branch name
-            const iata = fields['IATA Code'] ? sanitize(fields['IATA Code']) : null;
-            const airportName = sanitize(fields['Airport Name']);
-            const branchName = iata ? `add-airport-${iata}` : `add-airport-${airportName}`;
+            const requiredFields = [
+              'Airport Name', 'Country', 'Latitude', 'Longitude',
+              'Airport Type', 'Timezone (IANA)'
+            ];
+            
+            requiredFields.forEach(field => {
+              if (!fields[field]) errors.push(`Missing required field: ${field}`);
+            });
 
             core.setOutput('fields', JSON.stringify(fields));
+            core.exportVariable('ERRORS', errors.join("; "));
+
+            // Sanitize branch name
+            function sanitizeBranchName(input) {
+              return input
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9\s-]/g, '')
+                .replace(/\s+/g, '-')
+                .replace(/-+/g, '-')
+                .toLowerCase()
+                .slice(0, 40);
+            }
+            
+            const sanitizedName = sanitizeBranchName(fields['Airport Name'] || 'new-airport');
+            const branchName = `add-airport-${sanitizedName}-${Date.now()}`;
             core.setOutput('branch_name', branchName);
 
-      - name: Get last numeric ID from CSV
-        id: get_numeric_id
+      - name: Get next numeric ID
+        id: get_id
         run: |
-          LAST_ID=$(tail -n 1 data/airports.csv | cut -d',' -f1)
-          NEW_ID=$((LAST_ID + 1))
-          echo "NEW_NUMERIC_ID=$NEW_ID" >> $GITHUB_ENV
+          # Get last numeric ID from CSV
+          LAST_ID=$(tail -n 1 data/airports.csv | cut -d',' -f1 | tr -d '"' || echo "0")
+          NEXT_ID=$((LAST_ID + 1))
+          echo "next_id=$NEXT_ID" >> $GITHUB_OUTPUT
+          echo "NEXT_ID=$NEXT_ID" >> $GITHUB_ENV
 
-      - name: Append data to CSV
+      - name: Create new CSV row
+        id: create_row
         run: |
-          # Append new row to the CSV file.
-          echo "${{ env.NEW_NUMERIC_ID }},$(jq -r '.fields | [.["ICAO Code"], .["IATA Code"], .["Airport Name"], .["Latitude"], .["Longitude"], .["Country"], .["Timezone"], .["Airport Type"]] | @csv' <<< ${{ steps.extract_data.outputs }})" >> data/airports.csv
+          FIELDS='${{ steps.extract_data.outputs.fields }}'
+          
+          # Get values with fallbacks
+          get_field() {
+            echo $(jq -r --arg key "$1" '.[$key] // empty' <<< "$FIELDS")
+          }
 
-      - name: Create new branch and push CSV changes
+          # CSV column mapping
+          NEW_ROW=(
+            "$NEXT_ID"                                   # id
+            '""'                                         # ident
+            "\"$(get_field 'ICAO Code')\""               # icao
+            "\"$(get_field 'IATA Code')\""               # iata
+            '""'                                         # gps_code
+            '""'                                         # local_code
+            "\"$(get_field 'Airport Name')\""            # name
+            "\"$(get_field 'Latitude')\""                # latitude
+            "\"$(get_field 'Longitude')\""               # longitude
+            '""'                                         # elevation
+            '""'                                         # continent
+            "\"$(get_field 'Country')\""                 # country
+            '""'                                         # region
+            "\"$(get_field 'Municipality')\""            # municipality
+            '""'                                         # scheduled_service
+            "\"$(get_field 'Official Website URL')\""     # web_url
+            "\"$(get_field 'Wikipedia URL')\""           # wikipedia_url
+            "\"$(get_field 'Keywords')\""                # keywords
+            "\"$(get_field 'Timezone (IANA)')\""         # timezone
+            "\"$(get_field 'Airport Type')\""            # airport_type
+          )
+
+          # Join array to CSV row
+          CSV_ROW=$(IFS=','; echo "${NEW_ROW[*]}")
+          echo "csv_row=$CSV_ROW" >> $GITHUB_OUTPUT
+
+          # Create PR title
+          AIRPORT_NAME=$(get_field 'Airport Name')
+          IATA_CODE=$(get_field 'IATA Code')
+          PR_TITLE="🛬 Add airport: $AIRPORT_NAME"
+          [[ -n "$IATA_CODE" ]] && PR_TITLE+=" ($IATA_CODE)"
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+
+      - name: Create branch
         run: |
-          BRANCH_NAME="${{ steps.extract_data.outputs.branch_name }}"
-          git checkout -b $BRANCH_NAME
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b ${{ steps.extract_data.outputs.branch_name }}
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Add new airport to CSV
+        run: |
+          echo -e "\n${{ steps.create_row.outputs.csv_row }}" >> data/airports.csv
+          # Remove empty lines that might be added
+          sed -i '/^$/d' data/airports.csv
+
+      - name: Commit changes
+        run: |
           git add data/airports.csv
-          git commit -m "Added new airport: $(jq -r '.fields["Airport Name"]' <<< ${{ steps.extract_data.outputs }}) (IATA: $(jq -r '.fields["IATA Code"]' <<< ${{ steps.extract_data.outputs }}))"
-          git push origin $BRANCH_NAME
+          git commit -m "Add new airport: ${{ fromJson(steps.extract_data.outputs.fields)['Airport Name'] }"
+          git push origin ${{ steps.extract_data.outputs.branch_name }}
+
+      - name: Generate changes table
+        id: changes_table
+        run: |
+          IFS=',' read -ra NEW_ROW < <(echo "${{ steps.create_row.outputs.csv_row }}")
+          
+          declare -A COL_NAMES=(
+            ["0"]="Numeric ID"
+            ["2"]="ICAO Code"
+            ["3"]="IATA Code"
+            ["6"]="Airport Name"
+            ["7"]="Latitude"
+            ["8"]="Longitude"
+            ["11"]="Country"
+            ["13"]="Municipality"
+            ["15"]="Website"
+            ["16"]="Wikipedia"
+            ["17"]="Keywords"
+            ["18"]="Timezone"
+            ["19"]="Airport Type"
+          )
+          
+          TABLE="| Field | Value |\n|-------|-------|\n"
+          for index in "${!COL_NAMES[@]}"; do
+            value="${NEW_ROW[$index]}"
+            # Remove surrounding quotes
+            value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/')
+            [ -n "$value" ] && TABLE+="| ${COL_NAMES[$index]} | $value |\n"
+          done
+          
+          echo "table<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$TABLE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
-        id: create_pr
-        uses: peter-evans/create-pull-request@v5
-        with:
-          title: "🛫 Add new airport: ${{ fromJson(steps.extract_data.outputs.fields['Airport Name']) }}"
-          body: |
-            This PR was **automatically generated** from an airport request issue.
-            
-            ### ✈️ New Airport Details:
-            - **Name:** ${{ steps.extract_data.outputs.fields['Airport Name'] }}
-            - **ICAO:** ${{ steps.extract_data.outputs.fields['ICAO Code'] }}
-            - **IATA:** ${{ steps.extract_data.outputs.fields['IATA Code'] }}
-            - **Country:** ${{ steps.extract_data.outputs.fields['Country'] }}
-            - **Timezone:** ${{ steps.extract_data.outputs.fields['Timezone'] }}
-            - **Type:** ${{ steps.extract_data.outputs.fields['Airport Type'] }}
-            - **Keywords:** ${{ steps.extract_data.outputs.fields['Keywords'] }}
-            
-            🏷️ Label: `awaiting review`  
-            🔎 **Maintainers:** Please validate this submission before merging.
-          branch: "${{ steps.extract_data.outputs.branch_name }}"
-          base: main
-          labels: "awaiting review"
-
-      - name: Comment on Issue
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const { owner, repo } = context.repo;
             const issueNumber = context.payload.issue.number;
-            const prUrl = context.payload.pull_request.html_url;
+            
+            try {
+              const pr = await github.rest.pulls.create({
+                owner,
+                repo,
+                title: '${{ steps.create_row.outputs.pr_title }}',
+                head: '${{ steps.extract_data.outputs.branch_name }}',
+                base: 'main',
+                body: `## New Airport Addition
+            
+                Automated addition from issue #${issueNumber}
+            
+                ### Airport Details
+                ${{ steps.changes_table.outputs.table }}
+            
+                **Please verify:**
+                - [ ] Coordinates are correct
+                - [ ] Airport type matches facility
+                - [ ] Official sources are referenced`
+              });
 
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: `✅ **This request has been processed automatically.**
-            📄 A **Pull Request** has been created: [View PR](${prUrl})
-            🏷️ Label: \`awaiting review\`
-            🚀 Maintainers will review this addition shortly.`
-            });
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pr.data.number,
+                labels: ['add airport', 'awaiting review']
+              });
+
+              await github.rest.pulls.requestReviewers({
+                owner,
+                repo,
+                pull_number: pr.data.number,
+                reviewers: ['MauritsvanderZee']
+              });
+
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                labels: ['awaiting review']
+              });
+
+              core.setOutput('pr_url', pr.data.html_url);
+            } catch (error) {
+              core.setFailed(`PR creation failed: ${error}`);
+            }
