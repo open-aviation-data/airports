@@ -157,7 +157,13 @@ jobs:
           
             if [ -n "$value" ] && [ "$value" != "None" ] && [ "$value" != "No Change" ]; then
               OLD_VALUE="${NEW_ROW[$index]}"
-              NEW_ROW[$index]="$value"
+            
+              # Ensure Keywords (column 17) is wrapped in double quotes
+              if [ "$index" -eq 17 ]; then
+                NEW_ROW[$index]="\"$value\""
+              else
+                NEW_ROW[$index]="$value"
+              fi
           
               # Update JSON for changed field
               if [ -n "${FIELD_NAME_MAP[$index]}" ]; then
