@@ -97,7 +97,7 @@ jobs:
         run: |
           IFS=',' read -ra OLD < <(echo "${{ steps.existing.outputs.row }}")
           FIELDS='${{ steps.extract_data.outputs.fields }}'
-          
+
           # Map issue fields to CSV columns (0-based index)
           declare -A COLUMN_MAP=(
             ["ICAO Code"]=2
@@ -113,9 +113,9 @@ jobs:
             ["Timezone"]=18
             ["Airport Type (if changing)"]=19
           )
-          
+
           # Create a JSON for changed fields to use in PR comments
-          echo "FIELD_NAME_MAP=(" > field_names.txt
+          echo "declare -A FIELD_NAME_MAP=(" > field_names.txt
           echo '["0"]="Numeric ID"' >> field_names.txt
           echo '["1"]="Ident"' >> field_names.txt
           echo '["2"]="ICAO Code"' >> field_names.txt
@@ -138,51 +138,61 @@ jobs:
           echo '["19"]="Airport Type"' >> field_names.txt
           echo ")" >> field_names.txt
           source field_names.txt
-          
+
           NEW_ROW=()
           CHANGES_JSON="{"
+
           for i in "${!OLD[@]}"; do
             NEW_ROW[i]="${OLD[$i]}"
-          
-            # Add to JSON for tracking changes
+
+            # Add to JSON for tracking changes (ensure empty values are handled)
             if [ -n "${FIELD_NAME_MAP[$i]}" ]; then
-              CHANGES_JSON+="\"${FIELD_NAME_MAP[$i]}\":{\"old\":\"${OLD[$i]}\",\"new\":\"${OLD[$i]}\"},"
+              OLD_VAL="${OLD[$i]}"
+              ESCAPED_OLD_VAL=$(echo "$OLD_VAL" | sed 's/"/\\"/g')
+              CHANGES_JSON+="\"${FIELD_NAME_MAP[$i]}\":{\"old\":\"$ESCAPED_OLD_VAL\",\"new\":\"$ESCAPED_OLD_VAL\"},"
             fi
           done
-          
+
           # Update fields from issue
           for field in "${!COLUMN_MAP[@]}"; do
             index=${COLUMN_MAP[$field]}
             value=$(jq -r ".[\"$field\"] // empty" <<< "$FIELDS")
-          
+
             if [ -n "$value" ] && [ "$value" != "None" ] && [ "$value" != "No Change" ]; then
               OLD_VALUE="${NEW_ROW[$index]}"
-            
-              # Ensure Keywords (column 17) is wrapped in double quotes
+
+              # For the Keywords column (index 17), always wrap the new value in quotes.
               if [ "$index" -eq 17 ]; then
-                NEW_ROW[$index]="\"$value\""
+                new_val="\"$value\""
               else
-                NEW_ROW[$index]="$value"
+                new_val="$value"
               fi
-          
-              # Update JSON for changed field
+              NEW_ROW[$index]="$new_val"
+
+              # Update CHANGES_JSON for changed field:
               if [ -n "${FIELD_NAME_MAP[$index]}" ]; then
-                CHANGES_JSON="$(echo "$CHANGES_JSON" | sed "s/\"${FIELD_NAME_MAP[$index]}\":{\"old\":\"${OLD_VALUE}\",\"new\":\"${OLD_VALUE]\"}/\"${FIELD_NAME_MAP[$index]}\":{\"old\":\"${OLD_VALUE}\",\"new\":\"$value\"}/g")"
+                ESCAPED_OLD_VALUE=$(echo "$OLD_VALUE" | sed 's/"/\\"/g')
+                ESCAPED_NEW_VALUE=$(echo "$new_val" | sed 's/"/\\"/g')
+
+                # Ensure update happens only if the value actually changed
+                if [ "$ESCAPED_OLD_VALUE" != "$ESCAPED_NEW_VALUE" ]; then
+                  CHANGES_JSON+="\"${FIELD_NAME_MAP[$index]}\":{\"old\":\"$ESCAPED_OLD_VALUE\",\"new\":\"$ESCAPED_NEW_VALUE\"},"
+                fi
               fi
             fi
           done
-          
-          # Cleanup JSON
+
+          # Cleanup JSON (remove trailing comma if exists)
           CHANGES_JSON="${CHANGES_JSON%,}"
           CHANGES_JSON+="}"
-          
+
           # Join array back to CSV
           UPDATED_ROW=$(IFS=','; echo "${NEW_ROW[*]}")
           echo "updated_row=$UPDATED_ROW" >> $GITHUB_OUTPUT
-          
+
           # Save changes to file for PR comment
-          echo '$CHANGES_JSON' > changes.json
-          
+          echo "$CHANGES_JSON" > changes.json
+
           # Get Airport name and IATA for PR title
           AIRPORT_NAME="${NEW_ROW[6]}"
           IATA_CODE="${NEW_ROW[3]}"
