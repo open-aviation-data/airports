@@ -20,8 +20,8 @@ database, and your help is invaluable.
 issue describing the request.
 
 > [!NOTE]  
-> Submissions via Issues will be automatically processed into pull requests for review
-> Bulk updates via PRs must follow the format rules outlined below
+> * Submissions via Issues will be automatically processed into pull requests for review
+> * Bulk updates via PRs must follow the format rules outlined below
 
 ### ✅ Data validation checklist
 
