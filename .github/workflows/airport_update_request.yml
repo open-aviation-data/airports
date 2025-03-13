@@ -1,4 +1,4 @@
-name: Process Update Airport Requests
+name: Process Airport Updates
 
 on:
   issues:
@@ -6,303 +6,157 @@ on:
 
 permissions:
   contents: write
-  issues: write
   pull-requests: write
+  issues: write
 
 jobs:
-  validate-and-update-pr:
+  process-update:
     if: contains(github.event.issue.labels.*.name, 'update airport')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Extract issue data
-        id: extract_data
+      - name: Extract Issue Data
+        id: extract
         uses: actions/github-script@v6
         with:
           script: |
             const issue = context.payload.issue;
+            const body = issue.body.split('\n').map(l => l.trim());
+            
+            // Simple field extraction (assumes ### Field Name followed by value)
             const fields = {};
-            let errors = [];
+            let currentField = null;
             
-            // Split issue body into lines and extract key/value pairs using headers.
-            const bodyLines = issue.body.split('\n');
-            let lastKey = null;
-            for (const line of bodyLines) {
-              const match = line.match(/^### (.+)$/);
-              if (match) {
-                lastKey = match[1].trim();
-                fields[lastKey] = "";
-              } else if (lastKey) {
-                const value = line.trim();
-                if (value && value !== "_No response_") {
-                  fields[lastKey] += (fields[lastKey] ? " " : "") + value;
-                }
+            body.forEach(line => {
+              const fieldMatch = line.match(/^### (.+)/);
+              if (fieldMatch) {
+                currentField = fieldMatch[1].trim();
+                fields[currentField] = '';
+              } else if (currentField && line && line !== '_No response_') {
+                fields[currentField] = line;
               }
-            }
+            });
             
-            // Validate required fields.
-            if (!fields['Numeric ID']) {
-              errors.push('Missing required field: Numeric ID');
-            }
-            if (!fields['Airport Name']) {
-              errors.push('Missing required field: Airport Name');
-            }
+            // Validate required fields
+            const errors = [];
+            if (!fields['Numeric ID']) errors.push('Missing Numeric ID');
+            if (!fields['Airport Name']) errors.push('Missing Airport Name');
             
-            // Convert Numeric ID to integer.
-            fields['Numeric ID'] = fields['Numeric ID'] ? parseInt(fields['Numeric ID'], 10) : 0;
+            // Generate branch name
+            const branchName = `update-airport-${fields['Numeric ID']}-${
+              fields['Airport Name'].toLowerCase().replace(/[^a-z0-9]+/g, '-')
+            }-${Date.now()}`;
             
-            core.setOutput('fields', JSON.stringify(fields));
-            
-            // Function to sanitize branch names.
-            function sanitizeBranchName(input) {
-              return input
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-zA-Z0-9\s-]/g, '')
-                .replace(/\s+/g, '-')
-                .replace(/-+/g, '-')
-                .toLowerCase()
-                .slice(0, 40);
-            }
-            
-            const sanitizedAirportName = sanitizeBranchName(fields['Airport Name'] || 'unknown');
-            const branchName = `update-airport-${fields['Numeric ID']}-${sanitizedAirportName}`;
-            core.setOutput('branch_name', branchName);
-            core.exportVariable('ERRORS', errors.join("; "));
+            return {
+              fields: JSON.stringify(fields),
+              branch_name: branchName,
+              errors: errors.join('; ')
+            };
 
-      - name: Check if numeric ID exists in CSV
-        id: check_numeric_id
+      - name: Validate Numeric ID
+        id: validate
         run: |
-          NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-          if grep -q "^${NUMERIC_ID}," data/airports.csv; then
-            echo "ID_FOUND=true" >> $GITHUB_ENV
-          else
-            echo "ID_FOUND=false" >> $GITHUB_ENV
-            echo "ERRORS=${ERRORS}; Numeric ID not found in CSV" >> $GITHUB_ENV
+          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
+          if ! grep -q "^$NUMERIC_ID," data/airports.csv; then
+            echo "error=Numeric ID $NUMERIC_ID not found in CSV" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
-      - name: Fetch existing airport row
-        id: fetch_existing_data
+      - name: Get Existing Data
+        id: existing
         run: |
-          if [ "$ID_FOUND" = "true" ]; then
-            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-            EXISTING_ROW=$(grep "^${NUMERIC_ID}," data/airports.csv)
-            echo "EXISTING_ROW=${EXISTING_ROW}" >> $GITHUB_ENV
-          else
-            echo "EXISTING_ROW=" >> $GITHUB_ENV
-          fi
+          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
+          echo "row=$(grep "^$NUMERIC_ID," data/airports.csv)" >> $GITHUB_OUTPUT
 
-      - name: Merge existing and new data (raw CSV values)
-        id: merge_data
+      - name: Merge Data
+        id: merge
         run: |
-          if [ "$ID_FOUND" = "true" ]; then
-            # Extract Numeric ID.
-            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
+          IFS=',' read -ra OLD < <(echo "${{ steps.existing.outputs.row }}")
+          FIELDS='${{ steps.extract.outputs.fields }}'
           
-            # Get the existing CSV row.
-            EXISTING_ROW=$(echo "${EXISTING_ROW}")
+          # Map issue fields to CSV columns (0-based index)
+          declare -A COLUMN_MAP=(
+            ["ICAO Code"]=2
+            ["IATA Code"]=3
+            ["Airport Name"]=6
+            ["Latitude"]=7
+            ["Longitude"]=8
+            ["Country"]=11
+            ["Municipality"]=13
+            ["New Official Website URL (if applicable)"]=15
+            ["New Wikipedia URL (if applicable)"]=16
+            ["Keywords"]=17
+            ["Timezone"]=18
+            ["Airport Type (if changing)"]=19
+          )
           
-            # Split the CSV row into an array (assuming 20 columns).
-            OLD_DATA=($(echo "${EXISTING_ROW}" | awk -F, '{ for (i=1; i<=NF; i++) print $i }'))
+          NEW_ROW=()
+          for i in "${!OLD[@]}"; do
+            NEW_ROW[i]="${OLD[$i]}"
+          done
           
-            # Save the JSON fields.
-            NEW_DATA_JSON='${{ steps.extract_data.outputs.fields }}'
-            get_field() {
-              echo $(echo "$NEW_DATA_JSON" | jq -r --arg key "$1" '.[$key] // ""')
-            }
+          # Update fields from issue
+          for field in "${!COLUMN_MAP[@]}"; do
+            value=$(jq -r ".[\"$field\"] // empty" <<< "$FIELDS")
+            index=${COLUMN_MAP[$field]}
           
-            # Build UPDATED_ROW without quotes.
-            UPDATED_ROW="$NUMERIC_ID"  # Column 0: id
-            UPDATED_ROW+=",$(get_field 'ident' || echo "${OLD_DATA[1]}")"  # Column 1: ident (if you update, else preserve)
-            UPDATED_ROW+=",$(get_field 'ICAO Code' || echo "${OLD_DATA[2]}")"  # Column 2: icao
-            UPDATED_ROW+=",$(get_field 'IATA Code' || echo "${OLD_DATA[3]}")"  # Column 3: iata
-            UPDATED_ROW+=",$(echo "${OLD_DATA[4]}")"  # Column 4: gps_code (preserve)
-            UPDATED_ROW+=",$(echo "${OLD_DATA[5]}")"  # Column 5: local_code (preserve)
-            UPDATED_ROW+=",$(get_field 'Airport Name' || echo "${OLD_DATA[6]}")"  # Column 6: name
-            UPDATED_ROW+=",$(get_field 'Latitude' || echo "${OLD_DATA[7]}")"  # Column 7: latitude
-            UPDATED_ROW+=",$(get_field 'Longitude' || echo "${OLD_DATA[8]}")"  # Column 8: longitude
-            UPDATED_ROW+=",$(echo "${OLD_DATA[9]}")"  # Column 9: elevation (preserve)
-            UPDATED_ROW+=",$(echo "${OLD_DATA[10]}")" # Column 10: continent (preserve)
-            UPDATED_ROW+=",$(get_field 'Country' || echo "${OLD_DATA[11]}")"  # Column 11: country
-            UPDATED_ROW+=",$(echo "${OLD_DATA[12]}")"  # Column 12: region (preserve)
-            UPDATED_ROW+=",$(get_field 'Municipality' || echo "${OLD_DATA[13]}")"  # Column 13: municipality
-            UPDATED_ROW+=",$(echo "${OLD_DATA[14]}")"  # Column 14: scheduled_service (preserve)
-            UPDATED_ROW+=",$(get_field 'New Official Website URL (if applicable)' || echo "${OLD_DATA[15]}")"  # Column 15: web_url
-            UPDATED_ROW+=",$(get_field 'New Wikipedia URL (if applicable)' || echo "${OLD_DATA[16]}")"  # Column 16: wikipedia_url
-            UPDATED_ROW+=",$(get_field 'Keywords' || echo "${OLD_DATA[17]}")"  # Column 17: keywords
-            UPDATED_ROW+=",$(get_field 'Timezone' || echo "${OLD_DATA[18]}")"  # Column 18: timezone
-            new_type=$(get_field 'Airport Type (if changing)')
-            if [ "$new_type" = "None" ] || [ "$new_type" = "No Change" ] || [ -z "$new_type" ]; then
-              new_type="${OLD_DATA[19]}"
+            if [ -n "$value" ] && [ "$value" != "None" ] && [ "$value" != "No Change" ]; then
+              NEW_ROW[$index]="$value"
             fi
-            UPDATED_ROW+=",$new_type"  # Column 19: airport_type
+          done
           
-            echo "UPDATED_ROW=${UPDATED_ROW}" >> $GITHUB_ENV
-          else
-            echo "UPDATED_ROW=" >> $GITHUB_ENV
-          fi
+          # Join array back to CSV
+          UPDATED_ROW=$(IFS=','; echo "${NEW_ROW[*]}")
+          echo "updated_row=$UPDATED_ROW" >> $GITHUB_OUTPUT
 
-      - name: Set unique branch name
-        id: unique_branch
+      - name: Create Branch
         run: |
-          UNIQUE_BRANCH="${{ steps.extract_data.outputs.branch_name }}-$(date +%s)"
-          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_ENV
-          echo "UNIQUE_BRANCH=$UNIQUE_BRANCH" >> $GITHUB_ENV
-          echo "unique_branch=$UNIQUE_BRANCH" >> $GITHUB_OUTPUT
+          git checkout -b ${{ steps.extract.outputs.branch_name }}
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-      - name: Create new branch from main
+      - name: Update CSV
         run: |
-          echo "Using branch: ${{ env.UNIQUE_BRANCH }}"
-          git checkout main
-          git checkout -b "${{ env.UNIQUE_BRANCH }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          git push --set-upstream origin "${{ env.UNIQUE_BRANCH }}"
+          NUMERIC_ID=$(jq -r '."Numeric ID"' <<< '${{ steps.extract.outputs.fields }}')
+          awk -v id="$NUMERIC_ID" -v new="${{ steps.merge.outputs.updated_row }}" '
+            BEGIN {FS=OFS=","} 
+            $1 == id {$0 = new} 
+            {print}
+          ' data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
+          
+          git add data/airports.csv
+          git commit -m "Update airport $NUMERIC_ID: $(echo '${{ steps.extract.outputs.fields }}' | jq -r '."Airport Name"')"
+          git push origin ${{ steps.extract.outputs.branch_name }}
 
-      - name: Update CSV and commit changes
-        run: |
-          if [ "$ID_FOUND" = "true" ] && [ -n "${UPDATED_ROW}" ] && [ -z "$ERRORS" ]; then
-            NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')
-            echo "Extracted Numeric ID: $NUMERIC_ID"
-            if ! [[ "$NUMERIC_ID" =~ ^[0-9]+$ ]]; then
-              echo "Error: Invalid or missing Numeric ID: '$NUMERIC_ID'"
-              exit 1
-            fi
-            awk -v num_id="$NUMERIC_ID" -v updated_row="${UPDATED_ROW}" \
-              'BEGIN { FS=OFS="," } $1 == num_id { $0 = updated_row } 1' \
-              data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
-            git add -A
-            git commit -m "Updated airport: $(jq -r '.["Airport Name"]' <<< '${{ steps.extract_data.outputs.fields }}') (Numeric ID: $(jq -r '.["Numeric ID"]' <<< '${{ steps.extract_data.outputs.fields }}'))"
-            echo "Pushing to branch: ${{ env.UNIQUE_BRANCH }}"
-            git push origin "${{ env.UNIQUE_BRANCH }}"
-          else
-            echo "Skipping CSV update due to errors or missing numeric ID."
-          fi
-
-      - name: Convert JSON to env variables
-        id: convert_json
-        run: |
-          echo "NUMERIC_ID=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')" >> $GITHUB_ENV
-          echo "AIRPORT_NAME=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Airport Name"')" >> $GITHUB_ENV
-          echo "IATA_CODE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."IATA Code"')" >> $GITHUB_ENV
-          echo "ICAO_CODE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."ICAO Code"')" >> $GITHUB_ENV
-          echo "MUNICIPALITY=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Municipality"' )" >> $GITHUB_ENV
-          echo "AIRPORT_TYPE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Airport Type (if changing)"' )" >> $GITHUB_ENV
-          echo "LATITUDE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Latitude"')" >> $GITHUB_ENV
-          echo "LONGITUDE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Longitude"')" >> $GITHUB_ENV
-          echo "WEBSITE=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."New Official Website URL (if applicable)"')" >> $GITHUB_ENV
-          echo "WIKIPEDIA=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."New Wikipedia URL (if applicable)"')" >> $GITHUB_ENV
-          echo "KEYWORDS=$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Keywords"' )" >> $GITHUB_ENV
-
-      - name: Debug Before PR Creation
-        run: |
-          echo "Preparing to create pull request on branch: ${{ env.UNIQUE_BRANCH }}"
-
-      - name: Create Pull Request
-        id: create_pr
-        uses: peter-evans/create-pull-request@v7
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.PAT }}
-          commit-message: '[create-pull-request] automated change'
-          base: 'main'
-          branch: "${{ env.UNIQUE_BRANCH }}"
-          delete-branch: false
-          title: "🛫 Update airport: ${{ env.AIRPORT_NAME }}"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "Update airport: '${{ steps.extract.outputs.fields }}' | jq -r '."Airport Name"'"
+          branch: ${{ steps.extract.outputs.branch_name }}
+          base: main
+          labels: awaiting-review
           body: |
-            This PR was **automatically generated** from an airport update request issue.
-
-            ### ✈️ Updated Airport Details:
-            - **Name:** ${{ env.AIRPORT_NAME }}
-            - **IATA:** ${{ env.IATA_CODE }}
-            - **ICAO:** ${{ env.ICAO_CODE }}
-            - **Municipality:** ${{ env.MUNICIPALITY }}
-            - **Airport Type:** ${{ env.AIRPORT_TYPE }}
-            - **Latitude:** ${{ env.LATITUDE }}
-            - **Longitude:** ${{ env.LONGITUDE }}
-            - **Website:** ${{ env.WEBSITE }}
-            - **Wikipedia:** ${{ env.WIKIPEDIA }}
-            - **Keywords:** ${{ env.KEYWORDS }}
-            🏷️ Label: `awaiting review`  
-            🔎 **Maintainers:** Please validate this update before merging.
-          labels: "awaiting review"
-
-      - name: Debug PR Step
-        run: |
-          echo "Branch Name: ${{ env.UNIQUE_BRANCH }}"
-          echo "Checking if PR exists..."
-          gh pr list --state open --json title,headRefName
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Debug After PR Creation
-        run: echo "PR creation step executed"
+            Automated airport update from issue #${{ github.event.issue.number }}
+            
+            **Changes:**
+            ```diff
+            -${{ steps.existing.outputs.row }}
+            +${{ steps.merge.outputs.updated_row }}
+            ```
 
       - name: Comment on Issue
+        if: always()
         uses: actions/github-script@v6
-        env:
-          EXISTING_ROW: ${{ env.EXISTING_ROW }}
-          NEW_FIELDS: ${{ steps.extract_data.outputs.fields }}
-          PULL_REQUEST_URL: ${{ steps.create_pr.outputs.pull_request_url }}
-          ERRORS: ${{ env.ERRORS }}
         with:
           script: |
-            const oldRow = process.env.EXISTING_ROW || "";
-            const oldValues = oldRow.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/).map(val => val.trim());
-            const newFields = JSON.parse(process.env.NEW_FIELDS);
-            const fields = [
-              "ICAO Code", 
-              "IATA Code", 
-              "Airport Name", 
-              "Latitude", 
-              "Longitude", 
-              "Country", 
-              "Municipality",
-              "Website",
-              "Wikipedia",
-              "Keywords",
-              "Timezone", 
-              "Airport Type"
-            ];
-            const fieldIndices = {
-              "ICAO Code": 2,
-              "IATA Code": 3,
-              "Airport Name": 6,
-              "Latitude": 7,
-              "Longitude": 8,
-              "Country": 11,
-              "Municipality": 13,
-              "Website": 15,
-              "Wikipedia": 16,
-              "Keywords": 17,
-              "Timezone": 18,
-              "Airport Type": 19
-            };
-            let table = "| Field | Before | After |\n| --- | --- | --- |\n";
-            fields.forEach(field => {
-              const idx = fieldIndices[field];
-              const oldVal = oldValues[idx] || "";
-              const newVal = newFields[field] || oldVal;
-              table += `| ${field} | ${oldVal || "*empty*"} | ${newVal || "*empty*"} |\n`;
-            });
-            let errorSection = "";
-            if (process.env.ERRORS && process.env.ERRORS.trim() !== "") {
-              errorSection = "\n\n### Errors / Issues Found\n\n" + process.env.ERRORS;
-            }
-            const prUrl = process.env.PULL_REQUEST_URL || "N/A";
-            const issueNumber = context.payload.issue.number;
-            const body = `✅ **This request has been processed automatically.**\n\n` +
-                         `📄 A **Pull Request** has been created: [View PR](${prUrl})\n\n` +
-                         `### Changes Overview\n\n${table}` +
-                         errorSection + "\n\n" +
-                         `🏷️ Label: \`awaiting review\`\n` +
-                         `🚀 Maintainers will review this update before merging.`;
+            const prUrl = '${{ steps.create-pr.outputs.pull-request-url }}' || 'N/A';
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: body
+              issue_number: context.payload.issue.number,
+              body: `🚀 Update processed! ${prUrl ? `[View PR](${prUrl})` : ''}`
             });
