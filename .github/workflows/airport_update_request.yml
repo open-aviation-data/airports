@@ -147,19 +147,30 @@ jobs:
             $1 == id {$0 = new} 
             {print}
           ' data/airports.csv > tmp.csv && mv tmp.csv data/airports.csv
-          
+
+      - name: Debug CSV Changes
+        run: |
+          git status
+          cat data/airports.csv | grep "$(echo '${{ steps.extract_data.outputs.fields }}' | jq -r '."Numeric ID"')" || echo "No changes found"
+
+      - name: Commit Changes
+        run: |
           git add data/airports.csv
+          if git diff --cached --quiet; then
+            echo "No changes to commit. Exiting."
+            exit 1
+          fi
           git commit -m "Update airport"
           git push origin ${{ steps.extract_data.outputs.branch_name }}
 
-      - name: Create PR
+      - name: Create Pull Request
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           title: "🛫 Update airport"
           branch: ${{ steps.extract_data.outputs.branch_name }}
-          base: main
+          base: 'main'
           labels: awaiting-review
           body: |
             Automated airport update from issue #${{ github.event.issue.number }}
@@ -169,6 +180,7 @@ jobs:
             -${{ steps.existing.outputs.row }}
             +${{ steps.merge.outputs.updated_row }}
             ```
+
       - name: Check outputs
         if: ${{ steps.cpr.outputs.pull-request-number }}
         run: |
