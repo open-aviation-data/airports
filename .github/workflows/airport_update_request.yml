@@ -173,22 +173,45 @@ jobs:
           git branch -vv
 
       - name: Create Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v7
+        if: success()
+        uses: actions/github-script@v6
+        id: create-pr
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          title: "🛫 Update airport"
-          branch: ${{ steps.extract_data.outputs.branch_name }}
-          base: 'main'
-          labels: awaiting-review
-          body: |
-            Automated airport update from issue #${{ github.event.issue.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const { owner, repo } = context.repo;
+              const result = await github.rest.pulls.create({
+                owner,
+                repo,
+                title: '🛫 Update airport',
+                head: '${{ steps.extract_data.outputs.branch_name }}',
+                base: 'main',
+                body: `Automated airport update from issue #${context.payload.issue.number}
             
-            **Changes:**
-            ```diff
-            -${{ steps.existing.outputs.row }}
-            +${{ steps.merge.outputs.updated_row }}
-            ```
+                **Changes:**
+                \`\`\`diff
+                -${{ steps.existing.outputs.row }}
+                +${{ steps.merge.outputs.updated_row }}
+                \`\`\``,
+              });
+            
+              // Add label to the PR
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: result.data.number,
+                labels: ['awaiting-review']
+              });
+            
+              console.log(`Pull request created: #${result.data.number}`);
+              core.setOutput('pull_request_number', result.data.number);
+              core.setOutput('pull_request_url', result.data.html_url);
+              return result.data.html_url;
+            } catch (error) {
+              core.setFailed(`Failed to create PR: ${error.message}`);
+              return null;
+            }
 
       - name: Check outputs
         if: ${{ steps.cpr.outputs.pull-request-number }}
